@@ -147,6 +147,8 @@ demo_int_map.cmj : ../stdlib/map.cmi demo_int_map.cmi
 demo_int_map.cmx : ../stdlib/map.cmx demo_int_map.cmi
 demo_page.cmj :
 demo_page.cmx :
+derive_dyntype.cmj : ../runtime/js_dyn.cmi
+derive_dyntype.cmx : ../runtime/js_dyn.cmx
 digest_test.cmj : ../stdlib/string.cmi ../stdlib/printf.cmi mt.cmi \
     ext_array.cmj ../stdlib/digest.cmi ../stdlib/array.cmi
 digest_test.cmx : ../stdlib/string.cmx ../stdlib/printf.cmx mt.cmx \
@@ -859,6 +861,8 @@ demo_int_map.cmo : ../stdlib/map.cmi demo_int_map.cmi
 demo_int_map.cmj : ../stdlib/map.cmj demo_int_map.cmi
 demo_page.cmo :
 demo_page.cmj :
+derive_dyntype.cmo : ../runtime/js_dyn.cmi
+derive_dyntype.cmj : ../runtime/js_dyn.cmj
 digest_test.cmo : ../stdlib/string.cmi ../stdlib/printf.cmi mt.cmi \
     ext_array.cmo ../stdlib/digest.cmi ../stdlib/array.cmi
 digest_test.cmj : ../stdlib/string.cmj ../stdlib/printf.cmj mt.cmj \
