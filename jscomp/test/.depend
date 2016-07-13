@@ -741,6 +741,8 @@ unsafe_ppx_test.cmj : mt.cmi ffi_js.cmj
 unsafe_ppx_test.cmx : mt.cmx ffi_js.cmx
 unsafe_this.cmj : ../runtime/js.cmj unsafe_this.cmi
 unsafe_this.cmx : ../runtime/js.cmx unsafe_this.cmi
+xx_type.cmj : ../runtime/js_dyn.cmi ../runtime/js.cmj
+xx_type.cmx : ../runtime/js_dyn.cmx ../runtime/js.cmx
 a.cmo : test_order.cmo ../stdlib/string.cmi ../stdlib/set.cmi \
     ../stdlib/list.cmi
 a.cmj : test_order.cmj ../stdlib/string.cmj ../stdlib/set.cmj \
@@ -1455,3 +1457,5 @@ unsafe_ppx_test.cmo : mt.cmi ffi_js.cmo
 unsafe_ppx_test.cmj : mt.cmj ffi_js.cmj
 unsafe_this.cmo : ../runtime/js.cmo unsafe_this.cmi
 unsafe_this.cmj : ../runtime/js.cmj unsafe_this.cmi
+xx_type.cmo : ../runtime/js_dyn.cmi ../runtime/js.cmo
+xx_type.cmj : ../runtime/js_dyn.cmj ../runtime/js.cmj

@@ -29,8 +29,12 @@
 
 type 'a im_array = 'a array
 
-type variant_shape = (string im_array * int im_array)
-type record_shape = string im_array
+type variant_shape = 
+  { constructors : string im_array ;
+    arities : int im_array
+  }
+type record_shape = 
+  { labels : string im_array }
 
 type value = 
   | Int32 of  int32
@@ -68,5 +72,39 @@ val value_of_record : record_shape  -> value im_array -> value
 val value_of_variant : variant_shape -> int -> value im_array -> value
 
 val value_of_option : 'a to_value -> 'a option -> value
+
 val value_of_tuple_2 : 
-  'a to_value -> 'b to_value -> 'a * 'b -> value
+  'a to_value ->
+  'b to_value ->
+  'a * 'b ->
+  value
+val value_of_tuple_3 : 
+  'a to_value ->
+  'b to_value ->
+  'c to_value ->
+  'a * 'b * 'c -> value 
+
+val value_of_tuple_4 : 
+  'a to_value ->
+  'b to_value -> 
+  'c to_value ->
+  'd to_value -> 
+  'a * 'b * 'c * 'd -> value 
+
+val value_of_tuple_5 : 
+  'a0 to_value -> 
+  'a1 to_value -> 
+  'a2 to_value -> 
+  'a3 to_value -> 
+  'a4 to_value -> 
+  'a0 * 'a1 * 'a2 * 'a3 * 'a4 -> value 
+
+val value_of_tuple_6 : 
+  'a0 to_value -> 
+  'a1 to_value -> 
+  'a2 to_value -> 
+  'a3 to_value -> 
+  'a4 to_value -> 
+  'a5 to_value -> 
+  'a0 * 'a1 * 'a2 * 'a3 * 'a4 * 'a5 -> value 
+

@@ -28,8 +28,12 @@
 
 type 'a im_array = 'a array
 
-type variant_shape = (string im_array * int im_array)
-type record_shape = string im_array
+type variant_shape = 
+  { constructors : string im_array ;
+    arities : int im_array
+  }
+type record_shape =
+  { labels : string im_array }
 
 type value = 
   | Int32 of  int32
@@ -90,6 +94,33 @@ let value_of_variant labels tag vs =
 
 let value_of_tuple_2 k0 k1 (x,y) = 
   Tuple [|k0 x [@bs]; k1 y [@bs] |]
+
+let value_of_tuple_3 k0 k1 k2  (x,y,z) = 
+  Tuple [|k0 x [@bs]; k1 y [@bs] ; k2 z [@bs]|]
+
+let value_of_tuple_4 k0 k1 k2 k3 (a0,a1,a2,a3) = 
+  Tuple [|k0 a0 [@bs]; 
+          k1 a1 [@bs];
+          k2 a2 [@bs];
+          k3 a3 [@bs]
+        |]
+let value_of_tuple_5 k0 k1 k2 k3 k4 (a0,a1,a2,a3,a4) = 
+  Tuple [|
+    k0 a0 [@bs]; 
+    k1 a1 [@bs];
+    k2 a2 [@bs];
+    k3 a3 [@bs];
+    k4 a4 [@bs]
+  |]
+
+let value_of_tuple_6 k0 k1 k2 k3 k4 k5 (a0,a1,a2,a3, a4,a5) = 
+  Tuple [|k0 a0 [@bs]; 
+          k1 a1 [@bs];
+          k2 a2 [@bs]; 
+          k3 a3 [@bs];
+          k4 a4 [@bs];
+          k5 a5 [@bs]
+        |]
 
 let value_of_option k x = 
   match x with 

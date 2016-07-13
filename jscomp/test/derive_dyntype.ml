@@ -1,4 +1,4 @@
-[@@@bs.config {no_export}]
+
 
 type t = 
   | Monday
@@ -11,11 +11,11 @@ type t =
         [@@deriving bs.repr]
 include (struct 
   let all_branches_of_t : Js_dyn.variant_shape  = 
-    ([|"Monday"; "Tuesday" ; "SpecialDay" |],
-     [| 0; 0; 1; 2 ; 1 |]
-    )
-  let rec value_of_t : t Js_dyn.to_value = 
-    fun [@bs] (value : t) -> 
+    { constructors = 
+        [|"Monday"; "Tuesday" ; "SpecialDay" |];
+     arities = [| 0; 0; 1; 2 ; 1 |]
+    }
+  let rec _value_of_t  (value : t) :Js_dyn.value = 
     match value with 
     | Monday -> Js_dyn.value_of_variant all_branches_of_t 0 [||]
     | Tuesday -> Js_dyn.value_of_variant all_branches_of_t 1 [||]
@@ -37,17 +37,20 @@ include (struct
            |]
     | D x -> 
       Js_dyn.value_of_variant all_branches_of_t 5
-        [| value_of_t x [@bs]|]
+        [| _value_of_t x |]
+  let value_of_t : t Js_dyn.to_value = 
+    fun [@bs] v -> _value_of_t v 
 end : sig 
-  val value_of_t : t -> Js_dyn.value [@bs]
+  val value_of_t : t Js_dyn.to_value [@bs]
 end)
 
 type u = 
   { x : int ; y : t ; z : string ; u : int option}
     [@@deriving bs.repr]
 include (struct 
-  let all_fields_of_t = [| "x"; "y"; "z" |]
-  let rec value_of_u : u Js_dyn.to_value  = 
+  let all_fields_of_t : Js_dyn.record_shape = 
+    { labels = [| "x"; "y"; "z" |] }
+  let value_of_u : u Js_dyn.to_value  = 
     fun [@bs] (value : u) 
       -> 
         match value with 
@@ -56,4 +59,6 @@ include (struct
             [| Js_dyn.value_of_int  x [@bs] ; 
                value_of_t y [@bs] ;
                Js_dyn.value_of_string z [@bs] |]
+end : sig 
+  val value_of_u : u Js_dyn.to_value 
 end)
