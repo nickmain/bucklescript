@@ -54,6 +54,14 @@ let translate
   | Pjs_fn_runmethod _ 
     -> assert false (* already handled by {!Lam_compile} *)
   | Pjs_fn_method _ -> assert false
+  | Pglobal_exception id ->
+    Js_of_lam_exception.get_builtin_by_name id.name    
+  | Pstringadd ->
+    begin match args with      
+      | [a;b] ->
+        E.string_append a b
+      | _ -> assert false          
+    end          
   | Pinit_mod -> 
     E.runtime_call Js_config.module_ "init_mod" args
   | Pupdate_mod ->
@@ -400,16 +408,6 @@ let translate
       | [range; e] -> E.is_out e range
       | _ -> assert false
     end
-  | Pchar_of_int -> 
-    begin match args with 
-      | [e] -> Js_of_lam_string.caml_char_of_int e 
-      | _ -> assert false
-    end
-  | Pchar_to_int -> 
-    begin match args with 
-      | [e] -> Js_of_lam_string.caml_char_to_int e 
-      | _ -> assert false
-    end
   | Pbytes_of_string -> 
     begin 
       (* TODO: write a js primitive  - or is it necessary ?
@@ -447,24 +445,41 @@ let translate
 
       | _ -> assert false
       end
-  | Pbytesrefu 
-  | Pbytesrefs ->
+  | Pbytesrefu ->
       begin match args with
       | [e;e1] -> Js_of_lam_string.ref_byte e e1
       | _ -> assert false
       end
-
+    
+  | Pbytesrefs ->
+    begin match args with
+      | [e ; e1] ->
+        if !Clflags.fast then
+          Js_of_lam_string.ref_byte e e1
+        else E.runtime_call Js_config.bytes "get" args            
+      | _ -> assert false         
+    end
    (* For bytes and string, they both return [int] in ocaml 
        we need tell Pbyteref from Pstringref
        1. Pbyteref -> a[i]
        2. Pstringref -> a.charCodeAt (a[i] is wrong)
     *)
-  | Pstringrefu 
-  | Pstringrefs ->
+  | Pstringrefu  ->
       begin match args with
       | [e;e1] -> Js_of_lam_string.ref_string e e1 
       | _ -> assert false
       end
+
+  | Pstringrefs ->
+      begin match args with
+        | [e;e1] ->
+          if !Clflags.fast then
+            Js_of_lam_string.ref_string e e1             
+          else       
+            E.runtime_call Js_config.string "get" args          
+      | _ -> assert false
+      end
+    
   | Pgetglobal i   -> 
     (* TODO -- check args, case by case -- 
         1. include Array --> let include  = Array 
@@ -525,7 +540,7 @@ let translate
       | [e;e0;e1] -> decorate_side_effect cxt @@ Js_of_lam_array.set_array  e e0 e1
       | _ -> assert false
       end
-  | Pccall ({prim_attributes ; prim_ty } as prim) -> 
+  | Pccall prim -> 
       Lam_compile_external_call.translate cxt prim args 
      (* Test if the argument is a block or an immediate integer *)
   | Pisint -> 

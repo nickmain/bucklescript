@@ -193,7 +193,7 @@ let compile  ~filename output_prefix no_export env _sigs
     Translmod.reset () ; 
     Lam_compile_env.reset () ;
   in 
-  let lam = Lam.convert lam in 
+  let lam = Lam.convert  lam in 
   let _d  = Lam_util.dump env  in
   let _j = Js_pass_debug.dump in
   let lam = _d "initial"  lam in
@@ -422,7 +422,7 @@ let lambda_as_module
     (lam : Lambda.lambda) = 
   begin 
     Js_config.set_current_file filename ;  
-    Js_config.iset_debug_file "tuple_alloc.ml";
+    Js_config.iset_debug_file "jsoo_400_test.ml";
     let lambda_output = compile ~filename output_prefix false env sigs lam in
     let (//) = Filename.concat in 
     let basename =  

@@ -34,10 +34,15 @@ type action =
    lid * Parsetree.expression option 
 
 val is_single_string : t -> string option
-val as_string_exp : t -> Parsetree.expression option 
+val is_single_int : t -> int option 
+
+val as_string_exp : t -> Parsetree.expression option
+val as_core_type : Location.t -> t -> Parsetree.core_type    
 val as_empty_structure :  t -> bool 
-val is_string_or_strings : 
-  t -> [ `None | `Single of string | `Some of string list ]
+val as_ident : t -> lid option
+val raw_string_payload : Location.t -> string -> t 
+val assert_strings :
+  Location.t -> t -> string list  
 
 (** as a record or empty 
     it will accept 
@@ -52,3 +57,6 @@ val as_record_and_process :
 val assert_bool_lit : Parsetree.expression -> bool
 
 val empty : t 
+
+val table_dispatch : 
+  (Parsetree.expression option  -> 'a) String_map.t -> action -> 'a

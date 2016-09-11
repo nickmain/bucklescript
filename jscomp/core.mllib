@@ -1,9 +1,11 @@
+type_int_to_string
 type_util
 ident_map
-
+ocaml_stdlib_slots
 ident_util
 idents_analysis
 config_util
+
 
 
 ocaml_options
@@ -13,7 +15,7 @@ ocaml_parse
 lam
 lam_iter
 lam_print
-lam_external_def
+
 lam_compile_env
 lam_dispatch_primitive
 lam_stats
@@ -43,12 +45,12 @@ lam_dce
 lam_analysis
 lam_group
 
-lam_methname 
+
 
 j
 js_ast_util
 
-js_array
+js_arr
 js_program_loader
 js_output
 js_dump
@@ -70,6 +72,7 @@ js_of_lam_string
 js_of_lam_block
 js_of_lam_array
 js_of_lam_module
+js_of_lam_variant
 js_of_lam_exception
 js_implementation
 js_closure

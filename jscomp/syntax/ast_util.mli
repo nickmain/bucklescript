@@ -38,10 +38,12 @@ type uncurry_expression_gen =
    Parsetree.expression ->
    Parsetree.expression_desc) cxt
 type uncurry_type_gen = 
-  (Parsetree.core_type ->
+  (string -> (* label for error checking *)
+   Parsetree.core_type ->
    Parsetree.core_type  ->
    Parsetree.core_type) cxt
 
+(** TODO: the interface is not reusable, it depends on too much context *)
 (** syntax: {[f arg0 arg1 [@bs]]}*)
 val uncurry_fn_apply : 
   (Parsetree.expression ->
@@ -95,8 +97,6 @@ val to_method_type : uncurry_type_gen
 *)
 val to_method_callback_type : uncurry_type_gen
 
-val to_js_type : 
-  loc -> Parsetree.core_type -> Parsetree.core_type
 
 
 
@@ -115,8 +115,11 @@ val handle_debugger :
 val handle_raw : 
   loc -> Ast_payload.t -> Parsetree.expression
 
-val handle_regexp : 
-  loc -> Ast_payload.t -> Parsetree.expression
 
 val handle_raw_structure : 
   loc -> Ast_payload.t -> Parsetree.structure_item
+
+val ocaml_obj_as_js_object :
+  (Parsetree.pattern ->
+   Parsetree.class_field list ->
+   Parsetree.expression_desc) cxt   

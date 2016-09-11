@@ -75,44 +75,64 @@ let caml_blit_string s1 i1 s2 i2 (len : int ) =
     let off1 = Bs_string.length s1 - i1 in
     if len <= off1 then 
       for i = 0 to len - 1 do 
-        unsafe_set s2 (i2 + i) s1.[i1 + i]
+        unsafe_set s2 (i2 + i) (String.unsafe_get s1 (i1 + i))
       done
     else 
       begin
         for i = 0 to off1 - 1 do 
-          unsafe_set s2 (i2 + i) s1.[i1 + i]
+          unsafe_set s2 (i2 + i) (String.unsafe_get s1 (i1 + i))
         done;
         for i = off1 to len - 1 do 
           unsafe_set s2 (i2 + i) '\000'
         done
       end
+
+(** Same as {!Array.prototype.copyWithin} *)
+let copyWithin s1 i1 i2 len = 
+  if i1 < i2  then (* nop for i1 = i2 *)
+    let range_a =  length s1 - i2 - 1 in
+    let range_b = len - 1 in         
+    let range = if range_a > range_b then range_b else range_a in
+    for j = range downto 0 do
+      unsafe_set s1 (i2 + j) (unsafe_get s1 (i1 + j))
+    done
+  else if i1 > i2 then
+    let range_a = length s1 - i1 - 1 in 
+    let range_b = len - 1 in 
+    let range = if range_a > range_b then range_b else range_a in 
+    for k = 0 to range  do 
+      unsafe_set s1 (i2 + k) (unsafe_get s1 (i1 + k))
+    done
 
 (* TODO: when the compiler could optimize small function calls, 
    use high order functions instead
  *)
 let caml_blit_bytes s1 i1 s2 i2 len = 
   if len > 0 then
-    let off1 = length s1 - i1 in
-    if len <= off1 then 
-      for i = 0 to len - 1 do 
-        unsafe_set s2 (i2 + i) (unsafe_get s1 (i1 + i))
-      done
-    else 
-      begin
-        for i = 0 to off1 - 1 do 
+    if s1 == s2 then
+      copyWithin s1 i1 i2 len 
+    else
+      let off1 = length s1 - i1 in
+      if len <= off1 then 
+        for i = 0 to len - 1 do 
           unsafe_set s2 (i2 + i) (unsafe_get s1 (i1 + i))
-        done;
-        for i = off1 to len - 1 do 
-          unsafe_set s2 (i2 + i) '\000'
         done
-      end
+      else 
+        begin
+          for i = 0 to off1 - 1 do 
+            unsafe_set s2 (i2 + i) (unsafe_get s1 (i1 + i))
+          done;
+          for i = off1 to len - 1 do 
+            unsafe_set s2 (i2 + i) '\000'
+          done
+        end
 
 (** checkout [Bytes.empty] -- to be inlined? *)
 let bytes_of_string  s = 
   let len = Bs_string.length s in
   let res = new_uninitialized len  in
   for i = 0 to len - 1 do 
-    unsafe_set res i s.[i]
+    unsafe_set res i (String.unsafe_get s i)
       (* Note that when get a char and convert it to int immedately, should be optimized
          should be [s.charCodeAt[i]]
        *)
@@ -166,10 +186,15 @@ let caml_is_printable c =
 
 
 let caml_string_get16 s i = 
-  Char.code s.[i] + Char.code s.[i+1] lsl 8  
+  Char.code (String.unsafe_get s i) + Char.code (String.unsafe_get s (i+1)) lsl 8  
 
 let caml_string_get32 s i = 
-  Char.code s.[i] + 
-  Char.code s.[i+1] lsl 8  + 
-  Char.code s.[i+2] lsl 16 + 
-  Char.code s.[i+3] lsl 24
+  Char.code (String.unsafe_get s i) + 
+  Char.code (String.unsafe_get s (i+1)) lsl 8  + 
+  Char.code (String.unsafe_get s (i+2)) lsl 16 + 
+  Char.code (String.unsafe_get s (i+3)) lsl 24
+
+let get s i =
+  if i < 0 || i >= String.length s then
+    raise (Invalid_argument "index out of bounds")
+  else String.unsafe_get s i      

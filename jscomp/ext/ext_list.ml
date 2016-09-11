@@ -165,7 +165,13 @@ let rec map_last f l1 =
   | a1::l1 -> let r = f false  a1 in r :: map_last f l1
 
 
-let flat_map2_last f lx ly = List.concat @@ map2_last f lx ly
+let rec fold_right2_last f l1 l2 accu  = 
+  match (l1, l2) with
+  | ([], []) -> accu
+  | [last1], [last2] -> f true  last1 last2 accu
+  | (a1::l1, a2::l2) -> f false a1 a2 (fold_right2_last f l1 l2 accu)
+  | (_, _) -> invalid_arg "List.fold_right2"
+
 
 let init n f = 
   Array.to_list (Array.init n f)
@@ -184,11 +190,11 @@ let try_take n l =
     l,  arr_length, []
   else Array.to_list (Array.sub arr 0 n ), n, (Array.to_list (Array.sub arr n (arr_length - n)))
 
-let exclude_tail (x : 'a list) : 'a list = 
+let exclude_tail (x : 'a list) = 
   let rec aux acc x = 
     match x with 
     | [] -> invalid_arg "Ext_list.exclude_tail"
-    | [ _ ] ->  List.rev acc
+    | [ x ] ->  x, List.rev acc
     | y0::ys -> aux (y0::acc) ys in
   aux [] x
 
@@ -332,3 +338,11 @@ let ref_pop refs =
   | x::rest -> 
     refs := rest ; 
     x     
+
+let rev_except_last xs =
+  let rec aux acc xs =
+    match xs with
+    | [ ] -> invalid_arg "Ext_list.rev_except_last"
+    | [ x ] -> acc ,x
+    | x :: xs -> aux (x::acc) xs in
+  aux [] xs   

@@ -190,15 +190,13 @@ and get_exp_with_args (cxt : Lam_compile_defs.cxt)  lam args_lambda
         | _ ->  
           Js_output.handle_block_return cxt.st cxt.should_return lam args_code @@ 
           (match id, name,  args with 
-           | {name = "Pervasives"; _}, "^", [ e0 ; e1] ->  
-             E.string_append e0 e1 
            | {name = "Pervasives"; _}, "print_endline", ([ _ ] as args) ->  
              E.seq (E.dump Log args) E.unit
            | {name = "Pervasives"; _}, "prerr_endline", ([ _ ] as args) ->  
              E.seq (E.dump Error args) E.unit
            | _ -> 
              let rec aux (acc : J.expression)
-                 (arity : Lam_stats.function_arities) args (len : int)  =
+                 (arity : Lam.function_arities) args (len : int)  =
                match arity, len with
                | _, 0 -> 
                  acc (** All arguments consumed so far *)
@@ -309,7 +307,7 @@ and compile_recursive_let
           match x with  
           | Lam.Lvar lid
             -> S.exp 
-                 (Js_array.set_array (E.var id) (E.int (Int32.of_int i)) (E.var lid))
+                 (Js_arr.set_array (E.var id) (E.int (Int32.of_int i)) (E.var lid))
           | _ -> assert false
          ) ls)
     ), []
@@ -1310,7 +1308,7 @@ and
          let e = 
            match block with
            | [] -> e 
-           | _ -> E.of_block block e  in
+           | _ -> E.of_block block ~e  in
          let block = 
            [
              S.while_
@@ -1466,7 +1464,7 @@ and
         Lifthenelse
           (Lprim{primitive = Pintcomp(Ceq);
                  args = [Lvar id2 ; 
-                         Lprim{primitive = Pgetglobal {name = "Not_found"}; _}]},
+                         Lprim{primitive = Pglobal_exception {name = "Not_found"}; _}]},
            cont, _reraise )
       )
       | Ltrywith(
@@ -1475,7 +1473,7 @@ and
           id, 
           Lifthenelse(Lprim{primitive = Pintcomp(Ceq);
                             args = [ 
-                              Lprim { primitive = Pgetglobal {name = "Not_found"; _}; _}; Lvar id2 ]},
+                              Lprim { primitive = Pglobal_exception {name = "Not_found"; _}; _}; Lvar id2 ]},
                       cont, _reraise )
         )) when Ident.same id id2 
       -> 

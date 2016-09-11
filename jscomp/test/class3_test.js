@@ -305,9 +305,7 @@ eq('File "class3_test.ml", line 81, characters 12-19', v, /* int array */[
       3
     ]);
 
-var abstract_point = {
-  
-};
+var abstract_point = { };
 
 Caml_obj.caml_update_dummy(abstract_point, [
       0,
@@ -365,9 +363,7 @@ var v$1 = Curry.js1(-792262820, 9, h);
 
 eq('File "class3_test.ml", line 107, characters 12-19', v$1, 32);
 
-var abstract_point2 = {
-  
-};
+var abstract_point2 = { };
 
 Caml_obj.caml_update_dummy(abstract_point2, [
       0,
@@ -517,9 +513,7 @@ function point_again3_init($$class) {
   var inh = CamlinternalOO.inherits($$class, shared$5, 0, shared, restricted_point, 1);
   var obj_init = inh[0];
   var move$1 = inh[4];
-  CamlinternalOO.set_method($$class, move, function (self$neg14) {
-        return Curry._1(move$1, self$neg14);
-      });
+  CamlinternalOO.set_method($$class, move, Curry.__1(move$1));
   return function (_, self, x) {
     var self$1 = CamlinternalOO.create_object_opt(self, $$class);
     Curry._2(obj_init, self$1, x);

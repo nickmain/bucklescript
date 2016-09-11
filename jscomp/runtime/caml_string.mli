@@ -45,3 +45,4 @@ val caml_string_get16 : string -> int -> int
 val caml_string_get32 : string -> int -> int
 val js_string_of_char : char -> string 
 
+val get : string -> int -> char 

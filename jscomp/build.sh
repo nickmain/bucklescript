@@ -37,6 +37,9 @@ echo "Remaking standard library" >> build.compile
 cd ./stdlib; ./build.sh ; cd ../
 echo "Remaking standard library Finished" >> build.compile
 
+echo "Making others"
+cd others && make all 2>> ../build.compile ; make depend; cd ..
+echo "Making others finished"
 
 TARGET=a
 
@@ -60,3 +63,11 @@ echo "........" >> ./build.compile
 # npm run cover&
 
 echo "Done"
+
+echo "Make pack tools" >> ./build.compile
+make _build/bspack 2>> ./build.compile
+
+# make snapshot
+# generate new js_cmj_datasets
+make snapshotml
+echo "Done" >> ./build.compile

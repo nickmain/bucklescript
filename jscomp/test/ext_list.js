@@ -444,8 +444,50 @@ function map_last(f, l1) {
   }
 }
 
-function flat_map2_last(f, lx, ly) {
-  return List.concat(map2_last(f, lx, ly));
+function fold_right2_last(f, l1, l2, accu) {
+  if (l1) {
+    var l1$1 = l1[1];
+    var last1 = l1[0];
+    var exit = 0;
+    if (l1$1) {
+      exit = 1;
+    }
+    else if (l2) {
+      if (l2[1]) {
+        exit = 1;
+      }
+      else {
+        return Curry._4(f, /* true */1, last1, l2[0], accu);
+      }
+    }
+    else {
+      throw [
+            Caml_builtin_exceptions.invalid_argument,
+            "List.fold_right2"
+          ];
+    }
+    if (exit === 1) {
+      if (l2) {
+        return Curry._4(f, /* false */0, last1, l2[0], fold_right2_last(f, l1$1, l2[1], accu));
+      }
+      else {
+        throw [
+              Caml_builtin_exceptions.invalid_argument,
+              "List.fold_right2"
+            ];
+      }
+    }
+    
+  }
+  else if (l2) {
+    throw [
+          Caml_builtin_exceptions.invalid_argument,
+          "List.fold_right2"
+        ];
+  }
+  else {
+    return accu;
+  }
 }
 
 function init(n, f) {
@@ -496,17 +538,21 @@ function exclude_tail(x) {
     var acc = _acc;
     if (x$1) {
       var ys = x$1[1];
+      var x$2 = x$1[0];
       if (ys) {
         _x = ys;
         _acc = /* :: */[
-          x$1[0],
+          x$2,
           acc
         ];
         continue ;
         
       }
       else {
-        return List.rev(acc);
+        return /* tuple */[
+                x$2,
+                List.rev(acc)
+              ];
       }
     }
     else {
@@ -845,6 +891,40 @@ function ref_pop(refs) {
   }
 }
 
+function rev_except_last(xs) {
+  var _acc = /* [] */0;
+  var _xs = xs;
+  while(true) {
+    var xs$1 = _xs;
+    var acc = _acc;
+    if (xs$1) {
+      var xs$2 = xs$1[1];
+      var x = xs$1[0];
+      if (xs$2) {
+        _xs = xs$2;
+        _acc = /* :: */[
+          x,
+          acc
+        ];
+        continue ;
+        
+      }
+      else {
+        return /* tuple */[
+                acc,
+                x
+              ];
+      }
+    }
+    else {
+      throw [
+            Caml_builtin_exceptions.invalid_argument,
+            "Ext_list.rev_except_last"
+          ];
+    }
+  };
+}
+
 exports.filter_map         = filter_map;
 exports.excludes           = excludes;
 exports.exclude_with_fact  = exclude_with_fact;
@@ -858,7 +938,7 @@ exports.flat_map2          = flat_map2;
 exports.flat_map           = flat_map;
 exports.map2_last          = map2_last;
 exports.map_last           = map_last;
-exports.flat_map2_last     = flat_map2_last;
+exports.fold_right2_last   = fold_right2_last;
 exports.init               = init;
 exports.take               = take;
 exports.try_take           = try_take;
@@ -883,4 +963,5 @@ exports.ref_top            = ref_top;
 exports.ref_empty          = ref_empty;
 exports.ref_push           = ref_push;
 exports.ref_pop            = ref_pop;
+exports.rev_except_last    = rev_except_last;
 /* No side effect */

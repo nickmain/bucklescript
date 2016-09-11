@@ -1,4 +1,4 @@
-[@@@bs.config{bs_class_type  }]
+
 (** TODO: binding -- document.getElementById -- to mount node *)
 
 type html_element 
@@ -6,7 +6,7 @@ type html_element
 class type document = 
   object
     method getElementById : string -> html_element 
-  end
+  end[@bs]
 
 type doc = document Js.t 
 external doc :  doc  = "doc" [@@bs.val ]
@@ -14,7 +14,7 @@ external doc :  doc  = "doc" [@@bs.val ]
 class type con = 
   object
     method log : 'a -> unit 
-  end
+  end[@bs]
 
 type console = con Js.t 
 external console : console  = "console" [@@bs.val ]
@@ -23,7 +23,7 @@ let v = console##log "hey";;
 let u = console
 let v = doc##getElementById "haha"
 
-external log : 'a -> unit = "" [@@bs.call "console.log"]
+external log : 'a -> unit = "" [@@bs.val "console.log"]
 let v = log 32
 type t 
 type element
@@ -78,11 +78,11 @@ external div : vdom -> ?attrs:attrs -> component array ->  component = "div"
 type component_class
 external createClass : 
       config -> component_class = "createClass" 
-        [@@bs.call "createClass"]
+        [@@bs.val "createClass"]
         [@@bs.module "react"]
 
 external render : component_class -> element -> unit = "" 
-    [@@bs.call "render"]
+    [@@bs.val "render"]
     [@@bs.module "react-dom"] (* TODO: error checking -- attributes todo*)
 ;;
 

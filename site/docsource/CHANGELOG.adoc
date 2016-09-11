@@ -1,0 +1,27 @@
+
+[appendix]
+## CHANGES
+
+
+== 1.02 (dev)
+
+* Bug fixes and enhancement
+
+- Fix Bytes.blit when src==dst {issues}743[#743]
+
+== 1.01
+
+* FFI
+- support fields and mutable fields in JS object creation
+	and private method {issues}/694[#694]
+- Introduce phantom arguments (`bs.ignore`) for ad-hoc
+	polymorphism {issues}/686[#686]
+
+* Bug fixes and enhancement
+
+- Enforce `#=` always return unit {issues}718[#718] for better error messages
+
+
+== 1.0
+
+Initial release

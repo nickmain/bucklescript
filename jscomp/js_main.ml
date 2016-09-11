@@ -38,24 +38,55 @@ let intf filename =
   Compenv.readenv ppf Before_compile; process_interface_file ppf filename;;
 
 let batch_files  = ref []
-
+let main_file  = ref ""
+    
 let collect_file name = 
   batch_files := name :: !batch_files
 
+let set_main_entry name =
+  if Sys.file_exists name then 
+    main_file := name  
+  else raise (Arg.Bad ("file " ^ name ^ " don't exist"))
 
 
 
+let (//) = Filename.concat
+(** [resolve cwd module_name], 
+    [cwd] is current working directory, absolute path
+    Trying to find paths to load [module_name]
+    it is sepcialized for option [-bs-package-include] which requires
+    [npm_package_name/lib/ocaml]
+*)
+let  resolve_bs_package ~cwd name = 
+  let sub_path = name // "lib" // "ocaml" in
+  let rec aux origin cwd name = 
+    let destdir =  cwd // Literals.node_modules // sub_path in 
+    if Ext_sys.is_directory_no_exn destdir then destdir
+    else 
+      let cwd' = Filename.dirname cwd in 
+      if String.length cwd' < String.length cwd then  
+        aux origin   cwd' name
+      else 
+        try 
+          let destdir = 
+            Sys.getenv "npm_config_prefix" 
+            // "lib" // Literals.node_modules // sub_path in
+          if Ext_sys.is_directory_no_exn destdir
+          then destdir
+          else
+            Bs_exception.error (Bs_package_not_found name)
+        with 
+          Not_found ->
+          Bs_exception.error (Bs_package_not_found name)          
+  in
+  aux cwd cwd name
 
-
-
-let add_include_path s = 
+let add_package s = 
   let path = 
-    Ext_filename.resolve_bs_package
+    resolve_bs_package
       ~cwd:(Lazy.force Ext_filename.cwd) s   in 
-  if Ext_sys.is_directory_no_exn path then 
-    Clflags.include_dirs := path :: ! Clflags.include_dirs
-  else 
-    Ext_pervasives.failwithf ~loc:__LOC__ "%s is not a directory" s 
+  Clflags.include_dirs := path :: ! Clflags.include_dirs
+
 
 let set_noassert () = 
   Js_config.set_no_any_assert ();
@@ -77,7 +108,7 @@ let buckle_script_flags =
    " set npm-output-path: [opt_module]:path, for example: 'lib/cjs', 'amdjs:lib/amdjs' and 'goog:lib/gjs'")
   ::
   ("-bs-package-include", 
-   Arg.String add_include_path, 
+   Arg.String add_package, 
    " set package names, for example bs-platform "  )
   :: 
   ("-bs-no-builtin-ppx-ml", 
@@ -108,6 +139,10 @@ let buckle_script_flags =
    Arg.Unit set_noassert, 
    " no code containing any assertion"
   )
+  ::
+  ("-bs-main",
+   Arg.String set_main_entry,   
+   " set the Main entry file")
   :: 
   ("-bs-files", 
    Arg.Rest collect_file, 
@@ -128,8 +163,7 @@ let _ =
   try
     Compenv.readenv ppf Before_args;
     Arg.parse buckle_script_flags anonymous usage;
-    Ocaml_batch_compile.batch_compile ppf !batch_files; 
-    exit 0
+    exit (Ocaml_batch_compile.batch_compile ppf !batch_files !main_file) 
   with x ->
     Location.report_exception ppf x;
     exit 2

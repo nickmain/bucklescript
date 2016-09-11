@@ -6,12 +6,13 @@
     "diff": "^2.2.2",
     "glob": "^7.0.3",
     "istanbul": "^0.4.2",
-    "karma": "^0.13.9",
-    "karma-jasmine-html-reporter": "^0.1.8",
+    "jasmine-core": "^2.4.1",
+    "karma": "^1.1.2",
+    "karma-jasmine-html-reporter": "^0.2.1",
     "mocha": "^2.3.4",
     "mocha-lcov-reporter": "^1.2.0",
-    "should": "^7.0.4",
-    "should-equal": "^0.5.0",
+    "should": "^10.0.0",
+    "should-equal": "^1.0.0",
     "uglify-js": "^2.6.1"
   },
   "scripts": {
@@ -23,7 +24,7 @@
     "postinstall": "./scripts/postinstall.sh"
   },
   "name": "bs-platform",
-  "version": "0.8.2",
+  "version": "1.0.2",
   "description": "bucklescript compiler, ocaml standard libary by bucklescript and its required runtime support",
   "repository": {
     "type": "git",
@@ -31,8 +32,11 @@
   },
   "bin": {
     "bsc": "./bin/bsc",
+    "bsppx": "./bin/bsppx",
+    "bspack": "./bin/bspack",
     "ocaml": "./bin/ocaml",
-    "ocamlc": "./bin/ocamlc.opt",
+    "ocamlc": "./bin/ocamlc",
+    "ocamlc.opt": "./bin/ocamlc.opt",
     "ocamldep": "./bin/ocamldep.opt",
     "ocamllex": "./bin/ocamllex.opt",
     "ocamlobjinfo": "./bin/ocamlobjinfo",

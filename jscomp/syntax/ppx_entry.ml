@@ -60,104 +60,108 @@ open Ast_helper
 
 
 let record_as_js_object = ref false (* otherwise has an attribute *)
-
-
-let obj_type_as_js_obj_type = ref false
-let uncurry_type = ref false 
-let obj_type_auto_uncurry =  ref false
 let no_export = ref false 
-let bs_class_type = ref false 
+
 
 let reset () = 
   record_as_js_object := false ;
-  obj_type_as_js_obj_type := false ;
-  uncurry_type := false ;
-  obj_type_auto_uncurry := false ;
-  bs_class_type := false;
   no_export  :=  false
 
 
 
+let process_getter_setter ~no ~get ~set
+    loc name
+    (attrs : Ast_attributes.t)
+    (ty : Parsetree.core_type) acc  =
+  match Ast_attributes.process_method_attributes_rev attrs with 
+  | {get = None; set = None}, _  ->  no ty :: acc 
+  | st , pctf_attributes
+    -> 
+    let get_acc = 
+      match st.set with 
+      | Some `No_get -> acc 
+      | None 
+      | Some `Get -> 
+        let lift txt = 
+          Typ.constr ~loc {txt ; loc} [ty] in
+        let (null,undefined) =                
+          match st with 
+          | {get = Some (null, undefined) } -> (null, undefined)
+          | {get = None} -> (false, false ) in 
+        let ty = 
+          match (null,undefined) with 
+          | false, false -> ty
+          | true, false -> lift Ast_literal.Lid.js_null
+          | false, true -> lift Ast_literal.Lid.js_undefined
+          | true , true -> lift Ast_literal.Lid.js_null_undefined in
+        get ty name pctf_attributes
+        :: acc  
+    in 
+    if st.set = None then get_acc 
+    else
+      set ty (name ^ Literals.setter_suffix) pctf_attributes         
+      :: get_acc 
 
-let handle_class_type_field  acc =
-  (fun self ({pctf_loc = loc } as ctf : Parsetree.class_type_field) -> 
-     match ctf.Parsetree.pctf_desc with 
-     | Pctf_method 
-         (name, private_flag, virtual_flag, ty) 
-       -> 
-       begin match Ast_attributes.process_method_attributes_rev ctf.pctf_attributes with 
-         | {get = None; set = None}, _  -> 
-           let ty = 
-             match ty.ptyp_desc with 
-             | Ptyp_arrow ("", args, body) 
-               -> 
-               Ast_util.to_method_type
-                 ty.ptyp_loc  self  args body
 
-             | Ptyp_poly (strs, {ptyp_desc = Ptyp_arrow ("", args, body); ptyp_loc})
-               -> 
-               {ty with ptyp_desc = 
-                          Ptyp_poly(strs,             
-                                    Ast_util.to_method_type
-                                      ptyp_loc  self args body  )}
-             | _ -> 
-               self.typ self ty
-           in 
-           {ctf with 
-            pctf_desc = 
-              Pctf_method (name , private_flag, virtual_flag, ty)}
-           :: acc 
 
-         | st , pctf_attributes
-           -> 
-           let get_acc = 
-             match st.set with 
-             | Some `No_get -> acc 
-             | None 
-             | Some `Get -> 
-               let lift txt = 
-                 Typ.constr ~loc {txt ; loc} [ty] in
-               let (null,undefined) =                
-                 match st with 
-                 | {get = Some (null, undefined) } -> (null, undefined)
-                 | {get = None} -> (false, false ) in 
-               let ty = 
-                 match (null,undefined) with 
-                 | false, false -> ty
-                 | true, false -> lift Ast_literal.Lid.js_null
-                 | false, true -> lift Ast_literal.Lid.js_undefined
-                 | true , true -> lift Ast_literal.Lid.js_null_undefined in 
-               {ctf with 
-                pctf_desc =  
-                  Pctf_method (name , 
-                               private_flag, 
-                               virtual_flag, 
-                               self.typ self ty
-                              );
-                pctf_attributes}
-               :: acc  
-           in 
-           if st.set = None then get_acc 
-           else 
-             {ctf with 
-              pctf_desc =
-                Pctf_method (name ^ Literals.setter_suffix, 
-                             private_flag,
-                             virtual_flag,
-                             Ast_util.to_method_type
-                               loc self ty
-                               (Ast_literal.type_unit ~loc ())
-                            );
-              pctf_attributes}
-             :: get_acc 
-       end
-     | Pctf_inherit _ 
-     | Pctf_val _ 
-     | Pctf_constraint _
-     | Pctf_attribute _ 
-     | Pctf_extension _  -> 
-       Ast_mapper.default_mapper.class_type_field self ctf :: acc 
-  )
+let handle_class_type_field self
+    ({pctf_loc = loc } as ctf : Parsetree.class_type_field)
+    acc =
+  match ctf.pctf_desc with 
+  | Pctf_method 
+      (name, private_flag, virtual_flag, ty) 
+    ->
+    let no (ty : Parsetree.core_type) =
+        let ty = 
+          match ty.ptyp_desc with 
+          | Ptyp_arrow (label, args, body) 
+            ->
+            Ast_util.to_method_type
+              ty.ptyp_loc  self label args body
+
+          | Ptyp_poly (strs, {ptyp_desc = Ptyp_arrow (label, args, body);
+                              ptyp_loc})
+            ->
+            {ty with ptyp_desc = 
+                       Ptyp_poly(strs,             
+                                 Ast_util.to_method_type
+                                   ptyp_loc  self label args body  )}
+          | _ -> 
+            self.typ self ty
+        in 
+        {ctf with 
+         pctf_desc = 
+           Pctf_method (name , private_flag, virtual_flag, ty)}
+    in
+    let get ty name pctf_attributes =
+      {ctf with 
+       pctf_desc =  
+         Pctf_method (name , 
+                      private_flag, 
+                      virtual_flag, 
+                      self.typ self ty
+                     );
+       pctf_attributes} in
+    let set ty name pctf_attributes =
+      {ctf with 
+       pctf_desc =
+         Pctf_method (name, 
+                      private_flag,
+                      virtual_flag,
+                      Ast_util.to_method_type
+                        loc self "" ty
+                        (Ast_literal.type_unit ~loc ())
+                     );
+       pctf_attributes} in
+    process_getter_setter ~no ~get ~set loc name ctf.pctf_attributes ty acc     
+
+  | Pctf_inherit _ 
+  | Pctf_val _ 
+  | Pctf_constraint _
+  | Pctf_attribute _ 
+  | Pctf_extension _  -> 
+    Ast_mapper.default_mapper.class_type_field self ctf :: acc 
+
 (*
   Attributes are very hard to attribute
   (since ptyp_attributes could happen in so many places), 
@@ -172,84 +176,77 @@ let handle_typ
   match ty with
   | {ptyp_desc = Ptyp_extension({txt = "bs.obj"}, PTyp ty)}
     -> 
-    Ext_ref.non_exn_protect obj_type_as_js_obj_type true 
+    Ext_ref.non_exn_protect record_as_js_object true 
       (fun _ -> self.typ self ty )
   | {ptyp_attributes ;
-     ptyp_desc = Ptyp_arrow ("", args, body);
+     ptyp_desc = Ptyp_arrow (label, args, body);
+     (* let it go without regard label names, 
+        it will report error later when the label is not empty
+     *)     
      ptyp_loc = loc
    } ->
     begin match  Ast_attributes.process_attributes_rev ptyp_attributes with 
       | `Uncurry , ptyp_attributes ->
-        Ast_util.to_uncurry_type loc self args body 
-      |  `Meth, ptyp_attributes -> 
-        Ast_util.to_method_callback_type loc self args body
+        Ast_util.to_uncurry_type loc self label args body 
+      |  `Meth_callback, ptyp_attributes ->
+        Ast_util.to_method_callback_type loc self label args body
+      | `Method, ptyp_attributes ->
+        Ast_util.to_method_type loc self label args body
       | `Nothing , _ -> 
-        if !uncurry_type then 
-          Ast_util.to_uncurry_type loc  self  args body
-        else 
           Ast_mapper.default_mapper.typ self ty
     end
   | {
     ptyp_desc =  Ptyp_object ( methods, closed_flag) ;
-    ptyp_attributes ;
     ptyp_loc = loc 
     } -> 
-
-    let check_auto_uncurry core_type = 
-      if  !obj_type_auto_uncurry then
-        Ext_ref.non_exn_protect uncurry_type true 
-          (fun _ -> self.typ self core_type  )          
-      else self.typ self core_type in 
-    let methods, ptyp_attributes  =
-      begin match Ext_list.exclude_with_fact
-                    (function 
-                      | {Location.txt = "bs"; _}, _ -> true
-                      | _ -> false)
-                    ptyp_attributes with 
-      | None, _  ->
-        List.map (fun (label, ptyp_attrs, core_type ) -> 
-            match Ast_attributes.process_attributes_rev ptyp_attrs with 
-            | `Nothing,  _ -> 
-              label, ptyp_attrs , check_auto_uncurry  core_type
-            |  `Uncurry, _  -> 
-              label , ptyp_attrs, 
-              check_auto_uncurry
-                { core_type with 
-                  ptyp_attributes = 
-                    Ast_attributes.bs :: core_type.ptyp_attributes}
-            |  `Meth, ptyp_attrs 
-              ->  
-              label , ptyp_attrs, 
-              check_auto_uncurry
-                { core_type with 
-                  ptyp_attributes = 
-                    Ast_attributes.bs_this :: core_type.ptyp_attributes}
-          ) methods , ptyp_attributes
-      |  Some _ ,  ptyp_attributes -> 
-        Ext_ref.non_exn_protect uncurry_type true begin fun _ -> 
-          List.map (fun (label, ptyp_attrs, core_type ) -> 
-              match Ast_attributes.process_attributes_rev ptyp_attrs with 
-              | `Nothing,  _ -> label, ptyp_attrs , self.typ self core_type
-              |  `Uncurry, ptyp_attrs -> 
-                label , ptyp_attrs, self.typ self 
-                  { core_type with 
-                    ptyp_attributes = 
-                      Ast_attributes.bs :: core_type.ptyp_attributes}
-              |  `Meth, ptyp_attrs -> 
-                label , ptyp_attrs, self.typ self 
-                  { core_type with 
-                    ptyp_attributes = 
-                      Ast_attributes.bs_this :: core_type.ptyp_attributes}
-            ) methods 
-        end, ptyp_attributes 
-      end
-    in          
+    let (+>) attr (typ : Parsetree.core_type) =
+      {typ with ptyp_attributes = attr :: typ.ptyp_attributes} in           
+    let methods =
+      List.fold_right (fun (label, ptyp_attrs, core_type) acc ->
+          let get ty name attrs =
+            let attrs, core_type =
+              match Ast_attributes.process_attributes_rev attrs with
+              | `Nothing, attrs -> attrs, core_type
+              | `Uncurry, attrs ->
+                attrs, Ast_attributes.bs +> ty
+              | `Method, _
+                -> Location.raise_errorf "bs.get/set conflicts with bs.meth"
+              | `Meth_callback, attrs ->
+                attrs, Ast_attributes.bs_this +> ty 
+            in 
+            name , attrs, self.typ self core_type in
+          let set ty name attrs =
+            let attrs, core_type =
+              match Ast_attributes.process_attributes_rev attrs with
+              | `Nothing, attrs -> attrs, core_type
+              | `Uncurry, attrs ->
+                attrs, Ast_attributes.bs +> ty 
+              | `Method, _
+                -> Location.raise_errorf "bs.get/set conflicts with bs.meth"
+              | `Meth_callback, attrs ->
+                attrs, Ast_attributes.bs_this +> ty
+            in               
+            name, attrs, Ast_util.to_method_type loc self "" core_type (Ast_literal.type_unit ~loc ()) in
+          let no ty =
+            let attrs, core_type =
+              match Ast_attributes.process_attributes_rev ptyp_attrs with
+              | `Nothing, attrs -> attrs, ty
+              | `Uncurry, attrs ->
+                attrs, Ast_attributes.bs +> ty 
+              | `Method, attrs -> 
+                attrs, Ast_attributes.bs_method +> ty 
+              | `Meth_callback, attrs ->
+                attrs, Ast_attributes.bs_this +> ty  in            
+            label, ptyp_attrs, self.typ self core_type in
+          process_getter_setter ~no ~get ~set
+            loc label ptyp_attrs core_type acc
+        ) methods [] in      
     let inner_type =
       { ty
         with ptyp_desc = Ptyp_object(methods, closed_flag);
-             ptyp_attributes } in 
-    if !obj_type_as_js_obj_type then 
-      Ast_util.to_js_type loc inner_type          
+              } in 
+    if !record_as_js_object then 
+      Ast_comb.to_js_type loc inner_type          
     else inner_type
   | _ -> super.typ self ty
 
@@ -268,8 +265,45 @@ let rec unsafe_mapper : Ast_mapper.mapper =
           Ast_util.handle_raw loc payload
         | Pexp_extension (
             {txt = "bs.re"; loc} , payload)
-          -> 
-          Ast_util.handle_regexp loc payload
+          ->
+          Exp.constraint_ ~loc
+            (Ast_util.handle_raw loc payload)
+            (Ast_comb.to_js_re_type loc)            
+        | Pexp_extension
+            ({txt = "bs.node"; loc},
+             payload)
+          ->
+          let strip s =
+            let len = String.length s in            
+            if s.[len - 1] = '_' then
+              String.sub s 0 (len - 1)
+            else s in                  
+          begin match Ast_payload.as_ident payload with
+            | Some {txt = Lident
+                        ("__filename"
+                        | "__dirname"
+                        | "module_"
+                        | "require" as name); loc}
+              ->
+              let exp =
+                Ast_util.handle_raw loc
+                  (Ast_payload.raw_string_payload loc
+                     (strip name) ) in
+              let typ =
+                Ast_comb.to_undefined_type loc @@                 
+                if name = "module_" then
+                  Typ.constr ~loc
+                    { txt = Ldot (Lident "Node", "node_module") ;
+                      loc} []   
+                else if name = "require" then
+                  (Typ.constr ~loc
+                     { txt = Ldot (Lident "Node", "node_require") ;
+                       loc} [] )  
+                else
+                  Ast_literal.type_string ~loc () in                  
+              Exp.constraint_ ~loc exp typ                
+            | Some _ | None -> Location.raise_errorf ~loc "Ilegal payload"              
+          end             
 
         (** [bs.debugger], its output should not be rewritten any more*)
         | Pexp_extension ({txt = "bs.debugger"; loc} , payload)
@@ -279,14 +313,20 @@ let rec unsafe_mapper : Ast_mapper.mapper =
             begin match payload with 
             | PStr [{pstr_desc = Pstr_eval (e,_)}]
               -> 
-              Ext_ref.non_exn_protect2 
-                record_as_js_object
-                obj_type_as_js_obj_type
-                true
-                true
+              Ext_ref.non_exn_protect record_as_js_object true
                 (fun () -> self.expr self e ) 
             | _ -> Location.raise_errorf ~loc "Expect an expression here"
             end
+        | Pexp_extension({txt ; loc}, PTyp typ) 
+          when Ext_string.starts_with txt Literals.bs_deriving_dot -> 
+          self.expr self @@ 
+          (Ast_payload.table_dispatch 
+            Ast_derive.derive_table 
+            ({loc ;
+              txt =
+                Lident 
+                  (Ext_string.tail_from txt (String.length Literals.bs_deriving_dot))}, None)).expression_gen typ
+            
         (** End rewriting *)
         | Pexp_fun ("", None, pat , body)
           ->
@@ -298,7 +338,9 @@ let rec unsafe_mapper : Ast_mapper.mapper =
             {e with 
              pexp_desc = Ast_util.to_uncurry_fn loc self pat body  ;
              pexp_attributes}
-          | `Meth , pexp_attributes
+          | `Method , _
+            ->  Location.raise_errorf ~loc "bs.meth is not supported in function expression"
+          | `Meth_callback , pexp_attributes
             -> 
             {e with pexp_desc = Ast_util.to_method_callback loc  self pat body ;
                     pexp_attributes }
@@ -351,9 +393,18 @@ let rec unsafe_mapper : Ast_mapper.mapper =
             (* we can not use [:=] for precedece cases 
                like {[i @@ x##length := 3 ]} 
                is parsed as {[ (i @@ x##length) := 3]}
+               since we allow user to create Js objects in OCaml, it can be of
+               ref type
+               {[
+                 let u = object (self)
+                   val x = ref 3 
+                   method setX x = self##x := 32
+                   method getX () = !self##x
+                 end
+               ]}
             *)
             | {pexp_desc = 
-                 Pexp_ident {txt = Lident  "#="}
+                 Pexp_ident {txt = Lident  ("#=" )}
               } -> 
               begin match args with 
               | ["", 
@@ -365,10 +416,12 @@ let rec unsafe_mapper : Ast_mapper.mapper =
                                 )}; 
                  "", arg
                 ] -> 
-                 { e with
-                   pexp_desc =
-                     Ast_util.method_apply loc self obj 
-                       (name ^ Literals.setter_suffix) ["", arg ]  }
+                 Exp.constraint_ ~loc
+                   { e with
+                     pexp_desc =
+                       Ast_util.method_apply loc self obj 
+                         (name ^ Literals.setter_suffix) ["", arg ]  }
+                   (Ast_literal.type_unit ~loc ())
               | _ -> Ast_mapper.default_mapper.expr self e 
               end
             | _ -> 
@@ -382,52 +435,174 @@ let rec unsafe_mapper : Ast_mapper.mapper =
                         pexp_attributes }
               end
           end
-        | Pexp_record (label_exprs, None)  -> 
-          (* TODO better error message when [with] detected in [%bs.obj] *)
+        | Pexp_record (label_exprs, opt_exp)  -> 
           if !record_as_js_object then
-            { e with
-              pexp_desc =  
-                Ast_util.record_as_js_object loc self label_exprs;
-            }
-          else 
+            (match opt_exp with
+             | None ->              
+               { e with
+                 pexp_desc =  
+                   Ast_util.record_as_js_object loc self label_exprs;
+               }
+             | Some e ->
+               Location.raise_errorf
+                 ~loc:e.pexp_loc "`with` construct is not supported in bs.obj ")
+          else
+            (* could be supported using `Object.assign`? 
+               type 
+               {[
+                 external update : 'a Js.t -> 'b Js.t -> 'a Js.t = ""
+                 constraint 'b :> 'a
+               ]}
+            *)
             Ast_mapper.default_mapper.expr  self e
+        | Pexp_object {pcstr_self;  pcstr_fields} ->
+          begin match Ast_attributes.process_bs e.pexp_attributes with
+            | `Has, pexp_attributes
+              ->
+              {e with
+               pexp_desc = 
+                 Ast_util.ocaml_obj_as_js_object
+                   loc self pcstr_self pcstr_fields;
+               pexp_attributes               
+              }                          
+            | `Nothing , _ ->
+              Ast_mapper.default_mapper.expr  self e              
+          end            
         | _ ->  Ast_mapper.default_mapper.expr self e
       );
     typ = (fun self typ -> handle_typ Ast_mapper.default_mapper self typ);
     class_type = 
-      (fun self ({pcty_attributes} as ctd) -> 
-         match Ast_attributes.process_class_type_decl_rev 
-                 pcty_attributes with 
+      (fun self ({pcty_attributes; pcty_loc} as ctd) -> 
+         match Ast_attributes.process_bs pcty_attributes with 
          | `Nothing,  _ -> 
            Ast_mapper.default_mapper.class_type
              self ctd 
-         | `Has, pcty_attributes -> 
-           Ext_ref.non_exn_protect bs_class_type true begin fun _ -> 
-             Ast_mapper.default_mapper.class_type
-               self {ctd with pcty_attributes}
-           end
+         | `Has, pcty_attributes ->
+           begin match ctd.pcty_desc with
+             | Pcty_signature ({pcsig_self; pcsig_fields })
+               ->
+               let pcsig_self = self.typ self pcsig_self in 
+               {ctd with
+                pcty_desc = Pcty_signature {
+                    pcsig_self ;
+                    pcsig_fields = List.fold_right (handle_class_type_field self)  pcsig_fields []
+                  };
+                pcty_attributes                    
+               }                    
+
+             | Pcty_constr _
+             | Pcty_extension _ 
+             | Pcty_arrow _ ->
+               Location.raise_errorf ~loc:pcty_loc "invalid or unused attribute `bs`"
+               (* {[class x : int -> object 
+                    end [@bs]
+                  ]}
+                  Actually this is not going to happpen as below is an invalid syntax
+                  {[class type x = int -> object
+                    end[@bs]]}
+               *)
+           end             
       );
-    class_signature = 
-      (fun self ({pcsig_self; pcsig_fields } as csg) -> 
-         if !bs_class_type then 
-           let pcsig_self = self.typ self pcsig_self in 
-           {
-             pcsig_self ;
-             pcsig_fields = List.fold_right (fun  f  acc ->
-               handle_class_type_field  acc self f 
-             )  pcsig_fields []
-           }
-         else 
-           Ast_mapper.default_mapper.class_signature self csg 
-      );
-    structure_item = (fun self (str : Parsetree.structure_item) -> 
+    signature_item =  begin fun (self : Ast_mapper.mapper) (sigi : Parsetree.signature_item) -> 
+      match sigi.psig_desc with 
+      | Psig_type [{ptype_attributes} as tdcl] -> 
+        begin match Ast_attributes.process_derive_type ptype_attributes with 
+        | {bs_deriving = `Has_deriving actions; explict_nonrec}, ptype_attributes
+          -> Ast_signature.fuse 
+               {sigi with 
+                psig_desc = Psig_type [self.type_declaration self {tdcl with ptype_attributes}]
+               }
+               (self.signature 
+                  self @@ 
+                Ast_derive.type_deriving_signature tdcl actions explict_nonrec)
+        | {bs_deriving = `Nothing }, _ -> 
+          {sigi with psig_desc = Psig_type [ self.type_declaration self tdcl] } 
+        end
+      | Psig_value
+          ({pval_attributes; 
+            pval_type; 
+            pval_loc;
+            pval_prim;
+            pval_name ;
+           } as prim) 
+        when Ast_attributes.process_external pval_attributes
+        -> 
+        let pval_type = self.typ self pval_type in
+        let pval_attributes = self.attributes self pval_attributes in         
+        let pval_type, pval_prim = 
+          match pval_prim with 
+          | [ v ] -> 
+            Ast_external_attributes.handle_attributes_as_string
+              pval_loc 
+              pval_name.txt 
+              pval_type 
+              pval_attributes v
+          | _ -> Location.raise_errorf "only a single string is allowed in bs external" in
+        {sigi with 
+         psig_desc = 
+           Psig_value
+             {prim with
+              pval_type ; 
+              pval_prim ;
+              pval_attributes 
+                 }}
+
+      | _ -> Ast_mapper.default_mapper.signature_item self sigi
+    end;
+    structure_item = begin fun self (str : Parsetree.structure_item) -> 
         begin match str.pstr_desc with 
         | Pstr_extension ( ({txt = "bs.raw"; loc}, payload), _attrs) 
           -> 
           Ast_util.handle_raw_structure loc payload
+        | Pstr_type [ {ptype_attributes} as tdcl ]-> 
+          begin match Ast_attributes.process_derive_type ptype_attributes with 
+          | {bs_deriving = `Has_deriving actions;
+             explict_nonrec 
+            }, ptype_attributes -> 
+            Ast_structure.fuse 
+              {str with 
+               pstr_desc =
+                 Pstr_type 
+                   [ self.type_declaration self {tdcl with ptype_attributes}]}
+              (self.structure self @@ Ast_derive.type_deriving_structure
+                 tdcl actions explict_nonrec )
+          | {bs_deriving = `Nothing}, _  -> 
+            {str with 
+             pstr_desc = 
+               Pstr_type
+                 [ self.type_declaration self tdcl]}
+          end
+        | Pstr_primitive 
+            ({pval_attributes; 
+              pval_prim; 
+              pval_type;
+              pval_name;
+              pval_loc} as prim) 
+          when Ast_attributes.process_external pval_attributes
+          -> 
+          let pval_type = self.typ self pval_type in
+          let pval_attributes = self.attributes self pval_attributes in         
+          let pval_type, pval_prim = 
+            match pval_prim with 
+            | [ v] -> 
+              Ast_external_attributes.handle_attributes_as_string
+                pval_loc
+                pval_name.txt
+                pval_type pval_attributes v
+
+            | _ -> Location.raise_errorf "only a single string is allowed in bs external" in
+          {str with 
+           pstr_desc = 
+             Pstr_primitive
+               {prim with
+                pval_type ; 
+                pval_prim;
+                pval_attributes 
+               }}
+          
         | _ -> Ast_mapper.default_mapper.structure_item self str 
         end
-      )
+    end
   }
 
 
@@ -436,18 +611,7 @@ let rec unsafe_mapper : Ast_mapper.mapper =
 (** global configurations below *)
 let common_actions_table : 
   (string *  (Parsetree.expression option -> unit)) list = 
-  [ "obj_type_auto_uncurry", 
-    (fun e -> 
-       obj_type_auto_uncurry := 
-         (match e with Some e -> Ast_payload.assert_bool_lit e
-         | None -> true)
-    ); 
-    "bs_class_type", 
-    (fun e -> 
-       bs_class_type := 
-         (match e with Some e -> Ast_payload.assert_bool_lit e 
-         | None -> true)
-    )
+  [ 
   ]
 
 
@@ -467,16 +631,6 @@ let signature_config_table :
   String_map.of_list common_actions_table
 
 
-let make_call_back table (action : Ast_payload.action)
-     = 
-  match action with 
-  | {txt = Lident name; loc  }, y -> 
-    begin match String_map.find name table with 
-      | fn -> fn y
-      | exception _ -> Location.raise_errorf ~loc "%s is not supported" name
-    end
-  | { loc ; }, _  -> 
-    Location.raise_errorf ~loc "invalid label for config"
 
 let rewrite_signature : 
   (Parsetree.signature  -> Parsetree.signature) ref = 
@@ -487,7 +641,7 @@ let rewrite_signature :
           -> 
           begin 
             Ast_payload.as_record_and_process loc payload 
-            |> List.iter (make_call_back signature_config_table) ; 
+            |> List.iter (Ast_payload.table_dispatch signature_config_table) ; 
             unsafe_mapper.signature unsafe_mapper rest
           end
         | _ -> 
@@ -503,7 +657,7 @@ let rewrite_implementation : (Parsetree.structure -> Parsetree.structure) ref =
           -> 
           begin 
             Ast_payload.as_record_and_process loc payload 
-            |> List.iter (make_call_back structural_config_table) ; 
+            |> List.iter (Ast_payload.table_dispatch structural_config_table) ; 
             let rest = unsafe_mapper.structure unsafe_mapper rest in
             if !no_export then
               [Str.include_ ~loc  

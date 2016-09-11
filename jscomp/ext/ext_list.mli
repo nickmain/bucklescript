@@ -46,7 +46,7 @@ val init : int -> (int -> 'a) -> 'a list
 val take : int -> 'a list -> 'a list * 'a list
 val try_take : int -> 'a list -> 'a list * int * 'a list 
 
-val exclude_tail : 'a list -> 'a list
+val exclude_tail : 'a list -> 'a * 'a list
 
 val filter_map2 : ('a -> 'b -> 'c option) -> 'a list -> 'b list -> 'c list
 
@@ -58,7 +58,9 @@ val flat_map2 : ('a -> 'b -> 'c list) -> 'a list -> 'b list -> 'c list
 
 val flat_map : ('a -> 'b list) -> 'a list -> 'b list 
 
-val flat_map2_last : (bool -> 'a -> 'b -> 'c list) -> 'a list -> 'b list -> 'c list
+(** for the last element the first element will be passed [true] *)
+
+val fold_right2_last : (bool -> 'a -> 'b -> 'c -> 'c) -> 'a list -> 'b list -> 'c -> 'c
 
 val map_last : (bool -> 'a -> 'b) -> 'a list -> 'b list
 
@@ -109,3 +111,5 @@ val ref_empty : 'a t -> bool
 val ref_push : 'a -> 'a t -> unit
 
 val ref_pop : 'a t -> 'a
+
+val rev_except_last : 'a list -> 'a list * 'a

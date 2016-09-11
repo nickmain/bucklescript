@@ -33,14 +33,33 @@ val process_method_attributes_rev :
   (bool * bool , [`Get | `No_get ]) st * t 
 
 val process_attributes_rev : 
-  t -> [ `Meth | `Nothing | `Uncurry ] * t 
+  t -> [ `Meth_callback | `Nothing | `Uncurry | `Method ] * t 
 
-val process_class_type_decl_rev : 
+val process_bs : 
   t -> [ `Nothing | `Has] * t 
 
-val process_const_string_rev : 
-  t -> 
-  [> `Has_re | `Nothing ] * t 
-val bs_obj : attr 
+val process_external : t -> bool 
+
+type derive_attr = {
+  explict_nonrec : bool;
+  bs_deriving : [`Has_deriving of Ast_payload.action list | `Nothing ]
+}
+val process_bs_string_int : 
+  t -> [`Nothing | `String | `Int | `Ignore] 
+
+val process_bs_string_as :
+  t -> string option 
+val process_bs_int_as : 
+  t -> int option 
+
+
+val process_derive_type : 
+  t -> derive_attr * t 
+
+
+val bs_obj : Parsetree.core_type -> t 
 val bs : attr 
 val bs_this : attr
+val bs_method : attr
+
+

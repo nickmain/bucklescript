@@ -36,6 +36,18 @@ let is_single_string (x : t ) =
       _}] -> Some name
   | _  -> None
 
+let is_single_int (x : t ) = 
+  match x with  (** TODO also need detect empty phrase case *)
+  | PStr [ {
+      pstr_desc =  
+        Pstr_eval (
+          {pexp_desc = 
+             Pexp_constant 
+               (Const_int name);
+           _},_);
+      _}] -> Some name
+  | _  -> None
+
 let as_string_exp (x : t ) = 
   match x with  (** TODO also need detect empty phrase case *)
   | PStr [ {
@@ -48,6 +60,29 @@ let as_string_exp (x : t ) =
       _}] -> Some e
   | _  -> None
 
+let as_core_type loc x =
+  match  x with
+  | Parsetree.PTyp x -> x
+  | _ -> Location.raise_errorf ~loc "except a core type"
+           
+let as_ident (x : t ) =
+  match x with
+  | PStr [
+      {pstr_desc =
+         Pstr_eval (
+           {
+             pexp_desc =
+               Pexp_ident ident 
+                 
+           } , _)
+      }
+    ] -> Some ident
+  | _ -> None
+open Ast_helper
+
+let raw_string_payload loc (s : string) : t =
+  PStr [ Str.eval ~loc (Exp.constant ~loc (Const_string (s,None)  ))]
+    
 let as_empty_structure (x : t ) = 
   match x with 
   | PStr ([]) -> true
@@ -88,27 +123,28 @@ let as_record_and_process
   | _ -> 
     Location.raise_errorf ~loc "this is not a valid record config"
 
-let is_string_or_strings (x : t) : 
-  [ `None | `Single of string | `Some of string list ] = 
+
+
+let assert_strings loc (x : t) : string list
+   = 
   let module M = struct exception Not_str end  in 
   match x with 
   | PStr [ {pstr_desc =  
               Pstr_eval (
                 {pexp_desc = 
-                   Pexp_apply
-                     ({pexp_desc = Pexp_constant (Const_string (name,_)); _},
-                      args
-                     );
+                   Pexp_tuple strs;
                  _},_);
+            pstr_loc = loc ;            
             _}] ->
     (try 
-       `Some (name :: (args |> List.map (fun (_label,e) ->
+        strs |> List.map (fun e ->
            match (e : Parsetree.expression) with
            | {pexp_desc = Pexp_constant (Const_string (name,_)); _} -> 
              name
-           | _ -> raise M.Not_str)))
-
-     with M.Not_str -> `None )
+           | _ -> raise M.Not_str)
+     with M.Not_str ->
+       Location.raise_errorf ~loc "expect string tuple list"
+    )
   | PStr [ {
       pstr_desc =  
         Pstr_eval (
@@ -116,9 +152,11 @@ let is_string_or_strings (x : t) :
              Pexp_constant 
                (Const_string (name,_));
            _},_);
-      _}] -> `Single name 
-  | _ -> `None
-
+      _}] ->  [name] 
+  | PStr [] ->  []
+  | PStr _                
+  | PTyp _ | PPat _ ->
+    Location.raise_errorf ~loc "expect string tuple list"
 let assert_bool_lit  (e : Parsetree.expression) = 
   match e.pexp_desc with
   | Pexp_construct ({txt = Lident "true" }, None)
@@ -130,3 +168,16 @@ let assert_bool_lit  (e : Parsetree.expression) =
 
 
 let empty : t = Parsetree.PStr []
+
+
+
+let table_dispatch table (action : action)
+     = 
+  match action with 
+  | {txt = Lident name; loc  }, y -> 
+    begin match String_map.find name table with 
+      | fn -> fn y
+      | exception _ -> Location.raise_errorf ~loc "%s is not supported" name
+    end
+  | { loc ; }, _  -> 
+    Location.raise_errorf ~loc "invalid label for config"

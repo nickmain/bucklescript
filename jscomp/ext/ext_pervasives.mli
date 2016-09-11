@@ -33,7 +33,8 @@
   *)
 
 external reraise: exn -> 'a = "%reraise"
-val finally : 'a -> ('a -> 'b) -> ('a -> 'c) -> 'b
+
+val finally : 'a -> ('a -> 'c) -> ('a -> 'b) -> 'b
 
 val with_file_as_chan : string -> (out_channel -> 'a) -> 'a
 
@@ -50,4 +51,5 @@ val bad_argf : ('a, unit, string, 'b) format4 -> 'a
 
 
 val dump : 'a -> string 
-[@@ocaml.deprecated "only for debugging purpose"]
+
+external id : 'a -> 'a = "%identity"

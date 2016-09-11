@@ -69,11 +69,11 @@ let rec no_side_effects (lam : Lam.t) : bool =
 
       | Pbytes_to_string 
       | Pbytes_of_string 
-      | Pchar_to_int (* might throw .. *)
-      | Pchar_of_int  
+      
 
 
-      | Pgetglobal _ 
+      | Pgetglobal _
+      | Pglobal_exception _
       | Pmakeblock _  (* whether it's mutable or not *)
       | Pfield _
       | Pfloatfield _ 
@@ -128,7 +128,7 @@ let rec no_side_effects (lam : Lam.t) : bool =
       (* Integer to external pointer *)
 
       | Poffsetint _
-
+      | Pstringadd 
         -> true
       | Pinit_mod
       | Pupdate_mod
@@ -189,7 +189,7 @@ let rec no_side_effects (lam : Lam.t) : bool =
                     args = [Lconst _]; _},exn,
               Lifthenelse(Lprim{args =  
                                   [Lvar exn1; 
-                                   Lprim {primitive = Pgetglobal ({name="Not_found"}); args = []; _}]
+                                   Lprim {primitive = Pglobal_exception ({name="Not_found"}); args = []; _}]
                                ; _},
                           then_, _)) when Ident.same exn1 exn
     (** we might put this in an optimization pass 
@@ -280,9 +280,56 @@ and size_constant x =
 
 and size_lams acc (lams : Lam.t list) = 
   List.fold_left (fun acc l -> acc  + size l ) acc lams
-
+let args_all_const args =
+  List.for_all (fun x -> match x with Lam.Lconst _ -> true | _ -> false) args
+    
 let exit_inline_size = 7 
 let small_inline_size = 5
+
+(** destruct pattern will work better 
+    if it is closed lambda, otherwise
+    you can not do full evaluation
+
+    We still should avoid inline too big code, 
+
+    ideally we should also evaluate its size after inlining, 
+    since after partial evaluation, it might still be *very big*
+*)
+let destruct_pattern (body : Lam.t) params args =
+  let rec aux v params args =
+    match params, args with
+    | x::xs, b::bs ->
+      if Ident.same x v then Some b
+      else aux v xs bs
+    | [] , _ -> None
+    | x::xs, [] -> assert false                  
+  in   
+  match body with
+  | Lswitch (Lvar v , switch)
+    ->
+    begin match aux v params args with
+      | Some (Lam.Lconst _ as lam) ->
+        size (Lam.switch lam switch) < small_inline_size
+      | Some _ | None -> false
+    end        
+  | Lifthenelse(Lvar v, then_, else_)
+    ->
+    begin match aux v params args with
+      | Some (Lconst _ as lam) ->
+        size (Lam.if_ lam then_ else_) < small_inline_size
+      | Some _ | None -> false          
+    end      
+  | _ -> false
+    
+(** Hints to inlining *)
+let ok_to_inline ~body params args =
+  let s = size body in
+  s < small_inline_size ||
+  (destruct_pattern body params args) ||  
+  (args_all_const args &&
+   (s < 10 && no_side_effects body )) 
+
+
 (* compared two lambdas in case analysis, note that we only compare some small lambdas
     Actually this patten is quite common in GADT, people have to write duplicated code 
     due to the type system restriction
@@ -318,13 +365,13 @@ let rec eq_lambda (l1 : Lam.t) (l2 : Lam.t) =
 and eq_primitive (p : Lam.primitive) (p1 : Lam.primitive) = 
   match p, p1 with 
   | Pccall {prim_name = n0 ; 
-            prim_attributes = [];
+            prim_native_name = nn0;
            },  
     Pccall {prim_name = n1; 
-            prim_attributes = [] ;
+            prim_native_name = nn1;
 
            } -> 
-    n0 = n1 (* No attributes, should be class api, comparison by name is good *)
+    n0 = n1 && nn0 = nn1 (* No attributes, should be class api, comparison by name is good *)
   | Pfield (n0, _dbg_info0),  Pfield (n1, _dbg_info1) 
     -> n0 = n1
   | Psetfield(i0, b0, _dbg_info0), Psetfield(i1, b1, _dbg_info1)

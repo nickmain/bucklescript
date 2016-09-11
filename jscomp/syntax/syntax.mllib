@@ -3,7 +3,13 @@ ast_payload
 ppx_entry
 ast_literal
 ast_comb
-depend
-ast_extract
 ast_util
 ast_attributes
+ast_external
+ast_structure
+ast_derive
+ast_signature
+ast_core_type
+ast_external_attributes
+ast_pat
+ast_exp

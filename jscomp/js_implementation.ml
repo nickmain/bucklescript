@@ -26,7 +26,9 @@ let print_if ppf flag printer arg =
   if !flag then fprintf ppf "%a@." printer arg;
   arg
 
-let after_parsing_sig ppf sourcefile outputprefix ast  = 
+let after_parsing_sig ppf sourcefile outputprefix ast  =
+  if Js_config.get_diagnose () then
+    Format.fprintf Format.err_formatter "Building %s@." sourcefile;    
   let modulename = module_of_filename ppf sourcefile outputprefix in
   let initial_env = Compmisc.initial_env () in
   Env.set_unit_name modulename;
@@ -54,6 +56,8 @@ let interface ppf sourcefile outputprefix =
   |> after_parsing_sig ppf sourcefile outputprefix 
 
 let after_parsing_impl ppf sourcefile outputprefix ast =
+  if Js_config.get_diagnose () then
+    Format.fprintf Format.err_formatter "Building %s@." sourcefile;      
   let modulename = Compenv.module_of_filename ppf sourcefile outputprefix in
   let env = Compmisc.initial_env() in
   Env.set_unit_name modulename;
@@ -77,14 +81,17 @@ let after_parsing_impl ppf sourcefile outputprefix ast =
               sourcefile  outputprefix lambda  with
           | e -> e 
           | exception e -> 
-            (* Save to a file instead so that it will not scare user *)            
-            let file = "bsc.dump" in
-            Ext_pervasives.with_file_as_chan file
-              (fun ch -> output_string ch @@             
-                Printexc.raw_backtrace_to_string (Printexc.get_raw_backtrace ()));
-            Ext_log.err __LOC__
-              "Compilation fatal error, stacktrace saved into %s when compiling %s"
-              file sourcefile;             
+            (* Save to a file instead so that it will not scare user *)
+            if Js_config.get_diagnose () then
+              begin              
+                let file = "bsc.dump" in
+                Ext_pervasives.with_file_as_chan file
+                  (fun ch -> output_string ch @@             
+                    Printexc.raw_backtrace_to_string (Printexc.get_raw_backtrace ()));
+                Ext_log.err __LOC__
+                  "Compilation fatal error, stacktrace saved into %s when compiling %s"
+                  file sourcefile;
+              end;            
             raise e             
         );
     end;

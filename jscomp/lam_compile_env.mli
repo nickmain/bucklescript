@@ -31,7 +31,7 @@
 
 (** Helper for global Ocaml module index into meaningful names  *) 
 
-type primitive_description = Types.type_expr option Primitive.description
+type primitive_description =  Primitive.description
 
 type key = 
   Ident.t * Env.t * bool 
@@ -47,7 +47,7 @@ type ident_info = {
   id : Ident.t;
   name : string;
   signatures : Types.signature;
-  arity : Lam_stats.function_arities; 
+  arity : Lam.function_arities; 
   closed_lambda : Lam.t option 
 }
 

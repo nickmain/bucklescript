@@ -34,10 +34,10 @@ let is_none x : Js.boolean =
   | None -> Js.true_ 
   | _ -> Js.false_ 
 
-let to_def x : _ Js.Undefined.t = 
+let to_def x : _ Js_undefined.t = 
   match  x with 
-  | None -> Js.Undefined.empty
-  | Some x -> Js.Undefined.return x 
+  | None -> Js_undefined.empty
+  | Some x -> Js_undefined.return x 
 
 (* In the next version of std, we already provide 
    [List.cons]

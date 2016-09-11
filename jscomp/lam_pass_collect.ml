@@ -32,7 +32,7 @@
 
 let annotate (meta : Lam_stats.meta)
     rec_flag    
-    (k:Ident.t) (v : Lam_stats.function_arities) lambda = 
+    (k:Ident.t) (v : Lam.function_arities) lambda = 
   (* Ext_log.dwarn  __LOC__ "%s/%d" k.name k.stamp;     *)
   match Hashtbl.find  meta.ident_tbl k  with 
   | exception Not_found -> 
@@ -131,10 +131,7 @@ let collect_helper  (meta : Lam_stats.meta) (lam : Lam.t)  =
 
   and collect  (lam : Lam.t)  =
     match lam with 
-    (* | Lprim (Pgetglobal ident,[]) *)
-    (*   -> *)
-    (*     if not @@ Ident.is_predef_exn ident  then *)
-    (*       Lam_util.add_required_module ident meta *)
+
         (** TODO: 
             how about module aliases..
             record dependency

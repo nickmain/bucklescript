@@ -35,14 +35,18 @@ type field_dbg_info = Lambda.field_dbg_info
 type set_field_dbg_info = Lambda.set_field_dbg_info
 
 type ident = Ident.t
+
+type function_arities = 
+  | Determin of bool * (int * Ident.t list option) list  * bool
+  | NA 
+               
 type primitive = 
   | Pbytes_to_string
   | Pbytes_of_string
-  | Pchar_to_int
-  | Pchar_of_int
   (* Globals *)
   | Pgetglobal of ident
   | Psetglobal of ident
+  | Pglobal_exception of ident       
   (* Operations on heap blocks *)
   | Pmakeblock of int * tag_info * mutable_flag
   | Pfield of int * field_dbg_info
@@ -54,7 +58,7 @@ type primitive =
   (* Force lazy values *)
   | Plazyforce
   (* External call *)
-  | Pccall of Types.type_expr option Primitive.description
+  | Pccall of  Primitive.description
   (* Exceptions *)
   | Praise
   (* Boolean operations *)
@@ -75,6 +79,7 @@ type primitive =
   | Pstringlength 
   | Pstringrefu 
   | Pstringrefs
+  | Pstringadd  
   | Pbyteslength
   | Pbytesrefu
   | Pbytessetu 
@@ -144,7 +149,8 @@ type primitive =
   | Pjs_fn_make of int 
   | Pjs_fn_run of int 
   | Pjs_fn_method of int 
-  | Pjs_fn_runmethod of int 
+  | Pjs_fn_runmethod of int
+
 type switch = 
   { sw_numconsts: int;
     sw_consts: (int * t) list;
@@ -155,11 +161,15 @@ and prim_info =
   { primitive : primitive ; 
     args : t list ; 
   }
+and apply_status =
+  | App_na
+  | App_ml_full
+  | App_js_full    
 and apply_info = 
   { fn : t ; 
     args : t list ; 
     loc : Location.t;
-    status : Lambda.apply_status
+    status : apply_status
   }
 and function_info = 
   { arity : int ; 
@@ -192,40 +202,25 @@ and t =
      we should use record for trivial debugger info
   *)
 
+
+
 module Prim = struct 
   type t = primitive
+  let mk name arity = 
+    Pccall {prim_name = name ; 
+            prim_native_name = "" ;
+            prim_alloc = false;
+            prim_native_float = false;
+            prim_arity = arity;
+
+           }
   let js_is_nil : t = 
-    Pccall{ prim_name = "js_is_nil";
-                   prim_arity = 1 ;
-                   prim_alloc = false;
-                   prim_native_name = "js_is_nil";
-                   prim_native_float = false;
-                   prim_attributes = [];
-                   prim_ty = None
-                 }
-
+    mk "js_is_nil" 1 
   let js_is_undef : t = 
-    Pccall{ prim_name = "js_is_undef";
-                   prim_arity = 1 ;
-                   prim_alloc = false;
-                   prim_native_name = "js_is_undef";
-                   prim_native_float = false;
-                   prim_attributes = [];
-                   prim_ty = None
-                 }
-
+    mk "js_is_undef" 1 
   let js_is_nil_undef : t  = 
-    Pccall{ prim_name = "js_is_nil_undef";
-                   prim_arity = 1 ;
-                   prim_alloc = false;
-                   prim_native_name = "js_is_nil_undef";
-                   prim_native_float = false;
-                   prim_attributes = [];
-                   prim_ty = None
-                 }
-
+    mk "js_is_nil_undef" 1 
 end
-
 
 
 
@@ -273,8 +268,25 @@ let if_ (a : t) (b : t) c =
     end
   | _ ->  Lifthenelse (a,b,c)
 
-let switch lam lam_switch : t = 
-  Lswitch(lam,lam_switch)
+let switch lam (lam_switch : switch) : t =
+  match lam with
+  | Lconst ((Const_pointer (i,_) | Const_base (Const_int i)))
+    ->
+    begin try List.assoc i lam_switch.sw_consts
+      with  Not_found ->
+      match lam_switch.sw_failaction with
+      | Some x -> x
+      | None -> assert false
+    end
+  | Lconst (Const_block (i,_,_)) ->
+    begin try List.assoc i lam_switch.sw_blocks
+      with  Not_found ->
+      match lam_switch.sw_failaction with
+      | Some x -> x
+      | None -> assert false
+    end
+  | _ -> 
+    Lswitch(lam,lam_switch)
 
 let stringswitch (lam : t) cases default : t = 
   match lam with
@@ -343,29 +355,35 @@ let comparison (cmp : Lambda.comparison) a b : bool =
   | Clt -> a < b 
   | Cge -> a >= b 
 
-let lift_int i : t =
-  Lconst (Const_base (Const_int i))
+module Lift = struct 
+  let int i : t =
+    Lconst (Const_base (Const_int i))
 
 
-let int32 i : t =
-  Lconst (Const_base (Const_int32 i))
+  let int32 i : t =
+    Lconst (Const_base (Const_int32 i))
 
-let lift_bool b = if b then true_ else false_
+  let bool b = if b then true_ else false_
 
-(* ATTENTION: [float, nativeint] constant propogaton is not done
-   yet , due to cross platform problem
-*) 
-let lift_float b  : t = 
-  Lconst (Const_base (Const_float b))
+  (* ATTENTION: [float, nativeint] constant propogaton is not done
+     yet , due to cross platform problem
+  *) 
+  let float b  : t = 
+    Lconst (Const_base (Const_float b))
 
-let lift_nativeint b : t = 
-  Lconst (Const_base (Const_nativeint b))
+  let nativeint b : t = 
+    Lconst (Const_base (Const_nativeint b))
 
-let lift_int32 b : t = 
-  Lconst (Const_base (Const_int32 b))
+  let int32 b : t = 
+    Lconst (Const_base (Const_int32 b))
 
-let lift_int64 b : t =
-  Lconst (Const_base (Const_int64 b))
+  let int64 b : t =
+    Lconst (Const_base (Const_int64 b))
+  let string b : t =
+    Lconst (Const_base (Const_string (b, None)))
+  let char b : t =
+    Lconst (Const_base (Const_char b))    
+end
 
 let prim ~primitive:(prim : Prim.t) ~args:(ll : t list)  : t = 
   let default () : t = Lprim { primitive = prim ;args =  ll } in 
@@ -373,29 +391,28 @@ let prim ~primitive:(prim : Prim.t) ~args:(ll : t list)  : t =
   | [Lconst a] -> 
     begin match prim, a  with 
       | Pnegint, (Const_base (Const_int a))
-        -> lift_int (- a)
+        -> Lift.int (- a)
       (* | Pfloatofint, (Const_base (Const_int a)) *)
-      (*   -> lift_float (float_of_int a) *)
+      (*   -> Lift.float (float_of_int a) *)
       | Pintoffloat, (Const_base (Const_float a))
         -> 
-        lift_int (int_of_float (float_of_string a))
-        (* | Pnegfloat -> lift_float (-. a) *)
-        (* | Pabsfloat -> lift_float (abs_float a) *)
+        Lift.int (int_of_float (float_of_string a))
+        (* | Pnegfloat -> Lift.float (-. a) *)
+        (* | Pabsfloat -> Lift.float (abs_float a) *)
       | Pstringlength, (Const_base (Const_string (a,_)) ) 
         -> 
-        lift_int (String.length a)
+        Lift.int (String.length a)
       (* | Pnegbint Pnativeint, (Const_base (Const_nativeint i)) *)
       (*   ->   *)
-      (*   lift_nativeint (Nativeint.neg i) *)
+      (*   Lift.nativeint (Nativeint.neg i) *)
       | Pnegbint Pint32, (Const_base (Const_int32 a))
         -> 
-        lift_int32 (Int32.neg a)
+        Lift.int32 (Int32.neg a)
       | Pnegbint Pint64, (Const_base (Const_int64 a))
         -> 
-        lift_int64 (Int64.neg a)
+        Lift.int64 (Int64.neg a)
       | Pnot , Const_pointer (a,_) 
-        -> lift_bool (a = 0 )
-
+        -> Lift.bool (a = 0 )
       | _ -> default ()
     end
 
@@ -403,16 +420,17 @@ let prim ~primitive:(prim : Prim.t) ~args:(ll : t list)  : t =
   | [Lconst a ; Lconst b] -> 
     begin match prim, a, b  with 
       | Pbintcomp(_, cmp), Const_base (Const_int32 a), Const_base (Const_int32 b)
-        -> lift_bool (comparison cmp a b)
+        -> Lift.bool (comparison cmp a b)
       | Pbintcomp(_, cmp), Const_base (Const_int64 a), Const_base (Const_int64 b)
-        -> lift_bool (comparison cmp a b)
+        -> Lift.bool (comparison cmp a b)
       | Pbintcomp(_, cmp), Const_base (Const_nativeint a), Const_base (Const_nativeint b)
-        -> lift_bool (comparison cmp a b)
+        -> Lift.bool (comparison cmp a b)
       | Pfloatcomp  cmp, Const_base (Const_nativeint a), Const_base (Const_nativeint b)
-        -> lift_bool (comparison cmp a b)
-      | Pintcomp cmp , Const_base (Const_int a), Const_base (Const_int b)
-        -> lift_bool (comparison cmp a b)
-
+        -> Lift.bool (comparison cmp a b)
+      | Pintcomp cmp ,
+        (Const_base (Const_int a) | Const_pointer (a,_)),
+        (Const_base (Const_int b) | Const_pointer (b,_))
+        -> Lift.bool (comparison cmp a b)
       | (Paddint
         | Psubint
         | Pmulint
@@ -427,7 +445,7 @@ let prim ~primitive:(prim : Prim.t) ~args:(ll : t list)  : t =
         ->
             (* WE SHOULD keep it as [int], to preserve types *)
             let aa,bb = Int32.of_int a, Int32.of_int  b in 
-            let int_ v = lift_int (Int32.to_int v ) in 
+            let int_ v = Lift.int (Int32.to_int v ) in 
             begin match prim with 
               | Paddint -> int_ (Int32.add aa bb)
               | Psubint -> int_ (Int32.sub aa bb)
@@ -457,22 +475,22 @@ let prim ~primitive:(prim : Prim.t) ~args:(ll : t list)  : t =
         ), Const_base (Const_int32 aa),  Const_base (Const_int32 bb)
         -> 
         begin match prim with 
-          | Paddbint _  -> lift_int32 (Int32.add aa bb)
-          | Psubbint _  -> lift_int32 (Int32.sub aa bb)
-          | Pmulbint _ -> lift_int32 (Int32.mul aa  bb)
-          | Pdivbint _ ->  (try lift_int32 (Int32.div aa  bb) with _  -> default ())
-          | Pmodbint _ -> (try lift_int32 (Int32.rem aa  bb) with _ -> default ())
-          | Pandbint _ -> lift_int32 (Int32.logand aa bb)
-          | Porbint _ -> lift_int32 (Int32.logor aa bb)
-          | Pxorbint _ -> lift_int32 (Int32.logxor aa bb)
+          | Paddbint _  -> Lift.int32 (Int32.add aa bb)
+          | Psubbint _  -> Lift.int32 (Int32.sub aa bb)
+          | Pmulbint _ -> Lift.int32 (Int32.mul aa  bb)
+          | Pdivbint _ ->  (try Lift.int32 (Int32.div aa  bb) with _  -> default ())
+          | Pmodbint _ -> (try Lift.int32 (Int32.rem aa  bb) with _ -> default ())
+          | Pandbint _ -> Lift.int32 (Int32.logand aa bb)
+          | Porbint _ -> Lift.int32 (Int32.logor aa bb)
+          | Pxorbint _ -> Lift.int32 (Int32.logxor aa bb)
           | _ -> default ()
         end
       | Plslbint Pint32, Const_base (Const_int32 aa), Const_base (Const_int b)
-        -> lift_int32 (Int32.shift_left  aa b )
+        -> Lift.int32 (Int32.shift_left  aa b )
       | Plsrbint Pint32, Const_base (Const_int32 aa), Const_base (Const_int b)
-        -> lift_int32 (Int32.shift_right_logical  aa b )
+        -> Lift.int32 (Int32.shift_right_logical  aa b )
       | Pasrbint Pint32, Const_base (Const_int32 aa), Const_base (Const_int b)
-        -> lift_int32 (Int32.shift_right  aa b )
+        -> Lift.int32 (Int32.shift_right  aa b )
 
       | (Paddbint Pint64
         | Psubbint Pint64
@@ -485,28 +503,38 @@ let prim ~primitive:(prim : Prim.t) ~args:(ll : t list)  : t =
         ), Const_base (Const_int64 aa),  Const_base (Const_int64 bb)
         -> 
         begin match prim with 
-          | Paddbint _  -> lift_int64 (Int64.add aa bb)
-          | Psubbint _  -> lift_int64 (Int64.sub aa bb)
-          | Pmulbint _ -> lift_int64 (Int64.mul aa  bb)
-          | Pdivbint _ -> (try lift_int64 (Int64.div aa  bb) with _ -> default ())
-          | Pmodbint _ -> (try lift_int64 (Int64.rem aa  bb) with _ -> default ())
-          | Pandbint _ -> lift_int64 (Int64.logand aa bb)
-          | Porbint _ -> lift_int64 (Int64.logor aa bb)
-          | Pxorbint _ -> lift_int64 (Int64.logxor aa bb)
+          | Paddbint _  -> Lift.int64 (Int64.add aa bb)
+          | Psubbint _  -> Lift.int64 (Int64.sub aa bb)
+          | Pmulbint _ -> Lift.int64 (Int64.mul aa  bb)
+          | Pdivbint _ -> (try Lift.int64 (Int64.div aa  bb) with _ -> default ())
+          | Pmodbint _ -> (try Lift.int64 (Int64.rem aa  bb) with _ -> default ())
+          | Pandbint _ -> Lift.int64 (Int64.logand aa bb)
+          | Porbint _ -> Lift.int64 (Int64.logor aa bb)
+          | Pxorbint _ -> Lift.int64 (Int64.logxor aa bb)
           | _ -> default ()
         end
       | Plslbint Pint64, Const_base (Const_int64 aa), Const_base (Const_int b)
-        -> lift_int64 (Int64.shift_left  aa b )
+        -> Lift.int64 (Int64.shift_left  aa b )
       | Plsrbint Pint64, Const_base (Const_int64 aa), Const_base (Const_int b)
-        -> lift_int64 (Int64.shift_right_logical  aa b )
+        -> Lift.int64 (Int64.shift_right_logical  aa b )
       | Pasrbint Pint64, Const_base (Const_int64 aa), Const_base (Const_int b)
-        -> lift_int64 (Int64.shift_right  aa b )
+        -> Lift.int64 (Int64.shift_right  aa b )
       | Psequand, Const_pointer (a, _), Const_pointer( b, _)
         -> 
-        lift_bool (a = 1 && b = 1)
+        Lift.bool (a = 1 && b = 1)
       | Psequor, Const_pointer (a, _), Const_pointer( b, _)
         -> 
-        lift_bool (a = 1 || b = 1)
+        Lift.bool (a = 1 || b = 1)
+      | Pstringadd, Const_base(Const_string (a, None)),
+        Const_base (Const_string (b,None))
+        ->
+        Lift.string (a ^ b)
+      | (Pstringrefs | Pstringrefu), Const_base(Const_string(a,None)),
+        (Const_base(Const_int b)| Const_pointer (b,_))
+        ->
+        begin try Lift.char (String.get a b)
+          with  _ -> default ()
+        end                       
       | _ -> default ()
     end
 
@@ -524,10 +552,6 @@ let lam_prim ~primitive:(p : Lambda.primitive) ~args  : t =
   | Pbytes_to_string 
     -> prim ~primitive:Pbytes_to_string ~args
   | Pbytes_of_string -> prim ~primitive:Pbytes_of_string ~args
-  | Pchar_to_int -> prim ~primitive:Pchar_to_int ~args
-  | Pchar_of_int -> prim ~primitive:Pchar_of_int ~args
-  | Pmark_ocaml_object -> 
-    begin match args with [l] -> l | _ -> assert false end
   | Pignore -> (* Pignore means return unit, it is not an nop *)
     begin match args with [x] -> seq x unit | _ -> assert false end
   | Prevapply loc 
@@ -548,7 +572,11 @@ let lam_prim ~primitive:(p : Lambda.primitive) ~args  : t =
     | _ -> assert false 
     end
   | Ploc loc -> assert false (* already compiled away here*)
-  | Pgetglobal id -> prim ~primitive:(Pgetglobal id) ~args
+  | Pgetglobal id ->
+    if Ident.is_predef_exn id then
+      prim ~primitive:(Pglobal_exception id) ~args      
+    else       
+      prim ~primitive:(Pgetglobal id) ~args
   | Psetglobal id -> prim ~primitive:(Psetglobal id) ~args
   | Pmakeblock (tag,info, mutable_flag) 
     -> prim ~primitive:(Pmakeblock (tag,info,mutable_flag)) ~args
@@ -570,7 +598,7 @@ let lam_prim ~primitive:(p : Lambda.primitive) ~args  : t =
     let prim_name = a.prim_name in
     if Pervasives.not @@ Ext_string.starts_with prim_name "js_" then 
       prim ~primitive:(Pccall a ) ~args else 
-    if prim_name =  "js_debugger" then 
+    if prim_name =  Literals.js_debugger then 
       prim ~primitive:Pdebugger ~args else 
     if prim_name =  Literals.js_fn_run || prim_name = Literals.js_method_run then
       prim ~primitive:(Pjs_fn_run (int_of_string a.prim_native_name)) ~args else 
@@ -587,7 +615,7 @@ let lam_prim ~primitive:(p : Lambda.primitive) ~args  : t =
       begin match args with 
         | [Lprim {primitive = Pmakeblock (0, _, _) ; 
                   args = [ 
-                    Lprim {primitive = Pgetglobal ({name = "Assert_failure"} as id); args =  []}; 
+                    Lprim {primitive = Pglobal_exception ({name = "Assert_failure"} as id); args =  []}; 
                     _
                   ]
                  } ] when Ident.global id
@@ -671,7 +699,13 @@ let lam_prim ~primitive:(p : Lambda.primitive) ~args  : t =
   | Pbigstring_set_16 x -> prim ~primitive:(Pbigstring_set_16 x) ~args
   | Pbigstring_set_32 x -> prim ~primitive:(Pbigstring_set_32 x) ~args
   | Pbigstring_set_64 x -> prim ~primitive:(Pbigstring_set_64 x) ~args
-  | Pctconst x -> prim ~primitive:(Pctconst x) ~args
+  | Pctconst x ->
+    begin match x with
+      | Word_size ->
+        Lift.int 32 (* TODO: documentation*)        
+      | _ -> prim ~primitive:(Pctconst x) ~args         
+    end
+
   | Pbbswap x -> prim ~primitive:(Pbbswap x) ~args
   | Pcvtbint (a,b) -> prim ~primitive:(Pcvtbint (a,b)) ~args
   | Pbintcomp (a,b) -> prim ~primitive:(Pbintcomp (a,b)) ~args
@@ -684,7 +718,7 @@ let rec convert (lam : Lambda.lambda) : t =
   | Lvar x -> Lvar x 
   | Lconst x -> 
     Lconst x 
-  | Lapply (fn,args,info) 
+  | Lapply (fn,args,loc) 
     ->  
     begin match fn with 
     | Lprim (
@@ -697,31 +731,37 @@ let rec convert (lam : Lambda.lambda) : t =
         ]
       ) -> (* replace all {!CamlinternalMod} function *)
       let args = List.map convert args in
-      if id = 0 then 
-        match args with 
-        | [_loc ; shape]  -> 
+      begin match Ocaml_stdlib_slots.camlinternalMod.(id), args  with
+      | "init_mod" ,  [_loc ; shape]  -> 
           begin match shape with 
             | Lconst (Const_block (0, _, [Const_block (0, _, [])])) 
               -> unit  (* see {!Translmod.init_shape}*)
             | _ ->  prim ~primitive:Pinit_mod ~args 
           end
-        | _ -> assert false 
-      else       
-        begin 
-          assert (id = 1);
-          match args with 
-          | [shape ;  _obj1; _obj2] -> 
+      | "update_mod", [shape ;  _obj1; _obj2] -> 
             (* here array access will have side effect .. *)
             begin match shape with 
             | Lconst (Const_block (0, _, [Const_block (0, _, [])]))
               -> unit (* see {!Translmod.init_shape}*)
             | _ -> prim ~primitive:Pupdate_mod ~args 
             end
-          | _ -> assert false
-        end
+      | _ -> assert false
+      end
+
+    | Lprim ( Pfield (id, _),
+              [Lprim (Pgetglobal ({name  = "Pervasives"} ), _)]              
+            )
+      ->
+      let args = List.map convert args in
+      begin match Ocaml_stdlib_slots.pervasives.(id) , args  with
+        | "^", [ l; r ] 
+          ->
+          prim ~primitive:Pstringadd ~args:[l;r]
+        | _ ->  apply (convert fn) args loc  App_na
+      end
     | _ -> 
         apply (convert fn) (List.map convert args) 
-          info.apply_loc info.apply_status
+          loc App_na
     end
   | Lfunction (kind,  params,body)
     ->  function_ 
@@ -763,7 +803,8 @@ let rec convert (lam : Lambda.lambda) : t =
   | Lsend (kind, a,b,ls, loc) -> 
     (* Format.fprintf Format.err_formatter "%a@." Printlambda.lambda b ; *)
     begin match convert b with 
-      | Lprim {primitive =  Pccall {prim_name = "js_unsafe_downgrade"};  args}
+      | Lprim {primitive =  Pccall {prim_name };  args}
+        when prim_name = Literals.js_unsafe_downgrade
         -> 
         begin match kind, ls with 
           | Public (Some name), [] -> 

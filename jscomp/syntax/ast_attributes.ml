@@ -88,42 +88,130 @@ let process_attributes_rev (attrs : t) =
       | "bs", (`Nothing | `Uncurry) 
         -> 
         `Uncurry, acc
-      | "bs.this", (`Nothing | `Meth)
-        ->  `Meth, acc
-      | "bs", `Meth 
-      | "bs.this", `Uncurry
+      | "bs.this", (`Nothing | `Meth_callback)
+        ->  `Meth_callback, acc
+      | "bs.meth",  (`Nothing | `Method)
+        -> `Method, acc
+      | "bs", _
+      | "bs.this", _
         -> Location.raise_errorf 
              ~loc
-             "[@bs.this] and [@bs] can not be applied at the same time"
+             "[@bs.this], [@bs], [@bs.meth] can not be applied at the same time"
       | _ , _ -> 
         st, attr::acc 
     ) ( `Nothing, []) attrs
 
-let process_class_type_decl_rev attrs = 
+let process_bs attrs = 
   List.fold_left (fun (st, acc) (({txt; loc}, _) as attr : attr) -> 
       match txt, st  with 
-      | "bs", `Nothing
+      | "bs", _
         -> 
         `Has, acc
       | _ , _ -> 
         st, attr::acc 
     ) ( `Nothing, []) attrs
 
-let process_const_string_rev attrs = 
-  List.fold_left (fun (st, acc) (({txt; loc}, _) as attr : attr) -> 
-      match txt, st  with 
-      | "bs.re", `Nothing
+let process_external attrs = 
+  List.exists (fun (({txt; }, _)  : attr) -> 
+      if Ext_string.starts_with txt "bs." then true 
+      else false
+    ) attrs
+
+
+type derive_attr = {
+  explict_nonrec : bool;
+  bs_deriving : [`Has_deriving of Ast_payload.action list | `Nothing ]
+}
+
+let process_derive_type attrs =
+  List.fold_left 
+    (fun (st, acc) 
+      (({txt ; loc}, payload  as attr): attr)  ->
+      match  st, txt  with
+      |  {bs_deriving = `Nothing}, "bs.deriving"
+        ->
+        {st with
+         bs_deriving = `Has_deriving 
+             (Ast_payload.as_record_and_process loc payload)}, acc 
+      | {bs_deriving = `Has_deriving _}, "bs.deriving"
         -> 
-        `Has_re, acc
-      | _ , _ -> 
-        st, attr::acc 
-    ) ( `Nothing, []) attrs
+        Location.raise_errorf ~loc "duplicated bs.deriving attribute"
+      | _ , _ ->
+        let st = 
+          if txt = "nonrec" then 
+            { st with explict_nonrec = true }
+          else st in 
+        st, attr::acc
+    ) ( {explict_nonrec = false; bs_deriving = `Nothing }, []) attrs
 
 
-let bs_obj  : attr 
-  = {txt = "bs.obj" ; loc = Location.none}, Ast_payload.empty
+
+let process_bs_string_int attrs = 
+  List.fold_left 
+    (fun st
+      (({txt ; loc}, payload ): attr)  ->
+      match  txt, st  with
+      | "bs.string", (`Nothing | `String)
+        -> `String
+      | "bs.int", (`Nothing | `Int)
+        ->  `Int
+      | "bs.ignore", (`Nothing | `Ignore)
+        -> `Ignore
+      | "bs.int", _
+      | "bs.string", _
+      | "bs.ignore", _
+        -> 
+        Location.raise_errorf ~loc "conflict attributes "
+      | _ , _ -> st 
+    ) `Nothing attrs
+
+let process_bs_string_as  attrs = 
+  List.fold_left 
+    (fun st
+      (({txt ; loc}, payload ): attr)  ->
+      match  txt, st  with
+      | "bs.as", None
+        ->
+        begin match Ast_payload.is_single_string payload with 
+          | None -> 
+            Location.raise_errorf ~loc "expect string literal "
+          | Some  _ as v->  v  
+        end
+      | "bs.as",  _ 
+        -> 
+          Location.raise_errorf ~loc "duplicated bs.as "
+      | _ , _ -> st 
+    ) None attrs
+
+let process_bs_int_as  attrs = 
+  List.fold_left 
+    (fun st
+      (({txt ; loc}, payload ): attr)  ->
+      match  txt, st  with
+      | "bs.as", None
+        ->
+        begin match Ast_payload.is_single_int payload with 
+          | None -> 
+            Location.raise_errorf ~loc "expect int literal "
+          | Some  _ as v->  v  
+        end
+      | "bs.as",  _ 
+        -> 
+          Location.raise_errorf ~loc "duplicated bs.as "
+      | _ , _ -> st 
+    ) None attrs
+
 
 let bs : attr
   =  {txt = "bs" ; loc = Location.none}, Ast_payload.empty
 let bs_this : attr
   =  {txt = "bs.this" ; loc = Location.none}, Ast_payload.empty
+
+let bs_method : attr 
+  =  {txt = "bs.meth"; loc = Location.none}, Ast_payload.empty
+
+
+let bs_obj pval_type : t
+  = 
+  [{txt = "bs.obj" ; loc = Location.none}, Ast_payload.empty 
+  ]

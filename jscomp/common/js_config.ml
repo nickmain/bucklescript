@@ -35,7 +35,7 @@ type env =
   | AmdJS
   | Goog (* of string option *)
 
-let default_env = ref NodeJS 
+
 
 type path = string 
 type module_system = 
@@ -55,7 +55,7 @@ type packages_info =
 let ext = ref ".js"
 let cmj_ext = ".cmj"
 
-let is_browser () = !default_env = Browser 
+
 
 let get_ext () = !ext
 
@@ -64,6 +64,7 @@ let packages_info : packages_info ref = ref Empty
 
 let set_browser () = 
   packages_info :=  Browser 
+let is_browser () = !packages_info = Browser 
 
 let get_package_name () = 
   match !packages_info with 
@@ -129,7 +130,7 @@ type info_query =
 let query_package_infos package_infos module_system = 
   match package_infos with 
   | Browser -> 
-    assert false 
+    `Empty
   | Empty -> `Empty
   | NonBrowser (name, []) -> `Package_script name
   | NonBrowser (name, paths) -> 
@@ -167,58 +168,7 @@ let default_gen_tds = ref false
 let no_builtin_ppx_ml = ref false
 let no_builtin_ppx_mli = ref false
 
-let stdlib_set = String_set.of_list [
-    "arg";
-    "gc";
-    "printexc";
-    "array";
-    "genlex";
-    "printf";
-    "arrayLabels";
-    "hashtbl";
-    "queue";
-    "buffer"; 
-    "int32";
-    "random";
-    "bytes"; 
-    "int64";
-    "scanf";
-    "bytesLabels";
-    "lazy";
-    "set";
-    "callback";
-    "lexing";
-    "sort";
-    "camlinternalFormat";
-    "list";
-    "stack";
-    "camlinternalFormatBasics";
-    "listLabels";
-    "stdLabels";
-    "camlinternalLazy";
-    "map";
-    (* "std_exit"; *)
-    (* https://developer.mozilla.org/de/docs/Web/Events/beforeunload *)
-    "camlinternalMod";
-    "marshal";
-    "stream";
-    "camlinternalOO";
-    "moreLabels";
-    "string";
-    "char";
-    "nativeint";
-    "stringLabels";
-    "complex";
-    "obj";
-    "sys";
-    "digest";
-    "oo";
-    "weak";
-    "filename";
-    "parsing";
-    "format";
-    "pervasives"
-]
+
 
 
 let builtin_exceptions = "Caml_builtin_exceptions"
@@ -231,12 +181,11 @@ let obj_runtime = "Caml_obj"
 let array = "Caml_array"
 let format = "Caml_format"
 let string = "Caml_string"
+let bytes = "Caml_bytes"  
 let float = "Caml_float"
 let hash = "Caml_hash"
 let oo = "Caml_oo"
 let curry = "Curry"
-(* let bigarray = "Caml_bigarray" *)
-(* let unix = "Caml_unix" *)
 let int64 = "Caml_int64"
 let md5 = "Caml_md5"
 let weak = "Caml_weak"
@@ -246,36 +195,7 @@ let int32 = "Caml_int32"
 let block = "Block"
 let js_primitive = "Js_primitive"
 let module_ = "Caml_module"
-let version = "0.8.2"
-
-let runtime_set = 
-  [
-    module_;
-    js_primitive;
-    block;
-    int32;
-    gc ;
-    backtrace; 
-    builtin_exceptions ;
-    exceptions ; 
-    io ;
-    sys ;
-    lexer ;
-    parser ;
-    obj_runtime ;
-    array ;
-    format ;
-    string ;
-    float ;
-    hash ;
-    oo ;
-    curry ;
-    (* bigarray ; *)
-    (* unix ; *)
-    int64 ;
-    md5 ;
-    weak ] |> 
-  List.fold_left (fun acc x -> String_set.add (String.uncapitalize x) acc ) String_set.empty
+let version = "1.0.2"
 
 let current_file = ref ""
 let debug_file = ref ""
@@ -304,3 +224,8 @@ let no_any_assert = ref false
 let set_no_any_assert () = no_any_assert := true
 let get_no_any_assert () = !no_any_assert
 
+let is_windows = 
+  match Sys.os_type with 
+  | "Win32" 
+  | "Cygwin"-> true
+  | _ -> false

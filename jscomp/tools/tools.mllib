@@ -1,8 +1,0 @@
-../ext/ext_pervasives
-../ext/ext_bytes
-../ext/ext_string
-../syntax/depend
-
-line_process
-ocaml_extract
-ocaml_pack_main

@@ -36,13 +36,22 @@ type set_field_dbg_info = Lambda.set_field_dbg_info
 
 type ident = Ident.t
 
+type function_arities = 
+  | Determin of bool * (int * Ident.t list option) list  * bool
+  (** when the first argument is true, it is for sure 
+
+      approximation sound but not complete 
+      the last one means it can take any params later, 
+      for an exception: it is (Determin (true,[], true))
+   *)
+  | NA 
+
 type primitive = 
   | Pbytes_to_string
   | Pbytes_of_string
-  | Pchar_to_int
-  | Pchar_of_int
   | Pgetglobal of ident
   | Psetglobal of ident
+  | Pglobal_exception of ident             
   | Pmakeblock of int * Lambda.tag_info * Asttypes.mutable_flag
   | Pfield of int * Lambda.field_dbg_info
   | Psetfield of int * bool * Lambda.set_field_dbg_info
@@ -50,7 +59,7 @@ type primitive =
   | Psetfloatfield of int * Lambda.set_field_dbg_info
   | Pduprecord of Types.record_representation * int
   | Plazyforce
-  | Pccall of Types.type_expr option Primitive.description
+  | Pccall of  Primitive.description
   | Praise 
   | Psequand | Psequor | Pnot
   | Pnegint | Paddint | Psubint | Pmulint | Pdivint | Pmodint
@@ -66,6 +75,7 @@ type primitive =
   | Pstringlength 
   | Pstringrefu 
   | Pstringrefs
+  | Pstringadd    
   | Pbyteslength
   | Pbytesrefu
   | Pbytessetu 
@@ -143,11 +153,15 @@ type switch  =
     sw_numblocks: int;
     sw_blocks: (int * t) list;
     sw_failaction : t option}
+and apply_status =
+  | App_na
+  | App_ml_full
+  | App_js_full      
 and apply_info = private
   { fn : t ; 
     args : t list ; 
     loc : Location.t;
-    status : Lambda.apply_status
+    status : apply_status
   }
 
 and prim_info = private
@@ -203,7 +217,7 @@ type unop = t ->  t
 val var : ident -> t
 val const : Lambda.structured_constant -> t
 
-val apply : t -> t list -> Location.t -> Lambda.apply_status -> t
+val apply : t -> t list -> Location.t -> apply_status -> t
 val function_ : 
   arity:int ->
   kind:Lambda.function_kind -> params:ident list -> body:t -> t

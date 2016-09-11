@@ -1,4 +1,4 @@
-[@@@bs.config{bs_class_type}]
+
 
 let uux_this :[%bs.obj: < length : int > ] -> int -> int -> int [@bs.this] 
   =
@@ -28,7 +28,7 @@ class type _x = object
   method onload : _x Js.t -> unit [@bs.this] [@@bs.set]
   method addEventListener : string -> (_x Js.t -> unit [@bs.this]) -> unit 
   method response : string
-end
+end[@bs]
 type x = _x Js.t 
 
 let f (x : x ) = 
@@ -39,3 +39,4 @@ let f (x : x ) =
     end
   end
 
+let u = fun [@bs.this] (_ : int) (x : int) -> x 

@@ -26,16 +26,27 @@ let parse_interface ppf sourcefile =
   let ast = Pparse.parse_interface ~tool_name:Js_config.tool_name ppf sourcefile in
   if !Js_config.no_builtin_ppx_mli then ast else  !Ppx_entry.rewrite_signature ast
 
+let lazy_parse_interface ppf sourcefile =
+  lazy (parse_interface ppf sourcefile)
+
 let parse_implementation ppf sourcefile = 
   let ast = 
     Pparse.parse_implementation ~tool_name:Js_config.tool_name ppf sourcefile in 
   if !Js_config.no_builtin_ppx_ml then ast else
     !Ppx_entry.rewrite_implementation ast 
 
+let lazy_parse_implementation ppf sourcefile =
+  lazy (parse_implementation ppf sourcefile)
+    
 let check_suffix  name  = 
   if Filename.check_suffix name ".ml"
   || Filename.check_suffix name ".mlt" then 
-    `Ml,  Compenv.output_prefix name 
+    `Ml,
+    (** This is per-file based, 
+        when [ocamlc] [-c -o another_dir/xx.cmi] 
+        it will return (another_dir/xx)
+    *)    
+    Compenv.output_prefix name 
   else if Filename.check_suffix name !Config.interface_suffix then 
     `Mli,  Compenv.output_prefix name 
   else 

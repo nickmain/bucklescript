@@ -32,37 +32,20 @@ type uncurry_expression_gen =
    Parsetree.expression ->
    Parsetree.expression_desc) cxt
 type uncurry_type_gen = 
-  (Parsetree.core_type ->
+  (string ->
+   Parsetree.core_type ->
    Parsetree.core_type  ->
    Parsetree.core_type) cxt
-let js_obj_type_id () = 
-  if Js_config.is_browser () then
-    Ast_literal.Lid.pervasives_js_obj
-  else Ast_literal.Lid.js_obj 
     
-let uncurry_type_id () = 
-  if Js_config.is_browser () then 
-     Ast_literal.Lid.pervasives_fn
-  else 
-    Ast_literal.Lid.js_fn
+let uncurry_type_id = 
+  Ast_literal.Lid.js_fn
 
-let method_id () = 
-  if Js_config.is_browser () then 
-     Ast_literal.Lid.pervasives_meth
-  else 
-    Ast_literal.Lid.js_meth
+let method_id  = 
+  Ast_literal.Lid.js_meth
 
-let method_call_back_id () = 
-  if Js_config.is_browser () then 
-    Ast_literal.Lid.pervasives_meth_callback
-  else 
-    Ast_literal.Lid.js_meth_callback
+let method_call_back_id  = 
+  Ast_literal.Lid.js_meth_callback
 
-let re_id () = 
-  if Js_config.is_browser () then
-    Ast_literal.Lid.pervasives_re_id 
-  else 
-    Ast_literal.Lid.js_re_id 
 let arity_lit = "Arity_"
 
 let mk_args loc n tys = 
@@ -80,14 +63,14 @@ let generic_lift txt loc args result  =
   Typ.constr ~loc {txt ; loc} xs
 
 let lift_curry_type  loc   = 
-  generic_lift  ( uncurry_type_id ()) loc
+  generic_lift   uncurry_type_id loc
 
 let lift_method_type loc  = 
-  generic_lift  (method_id ()) loc
+  generic_lift  method_id loc
 
 let lift_js_method_callback loc
   = 
-  generic_lift (method_call_back_id ()) loc 
+  generic_lift method_call_back_id loc 
 (** Note that currently there is no way to consume [Js.meth_callback]
     so it is fine to encode it with a freedom, 
     but we need make it better for error message.
@@ -102,24 +85,17 @@ let lift_js_method_callback loc
 *)
 
 
-let to_js_type loc  x  = 
-  Typ.constr ~loc {txt = js_obj_type_id (); loc} [x]
 
 let arrow = Typ.arrow
 
 
 let js_property loc obj name =
-  let downgrade ~loc () = 
-    let var = Typ.var ~loc "a" in 
-    Ast_comb.arrow_no_label ~loc
-      (to_js_type loc var) var
-  in
-  Ast_comb.local_extern_cont loc  
-    ~pval_prim:["js_unsafe_downgrade"] 
-    ~pval_type:(downgrade ~loc ())
-    ~local_fun_name:"cast" 
-    (fun down -> Exp.send ~loc (Exp.apply ~loc down ["", obj]) name  )
-
+  Parsetree.Pexp_send
+    ((Exp.apply ~loc
+        (Exp.ident ~loc
+           {loc;
+            txt = Ldot (Ast_literal.Lid.js_unsafe, Literals.js_unsafe_downgrade)})
+        ["",obj]), name)
 
 (* TODO: 
    have a final checking for property arities 
@@ -141,11 +117,24 @@ let generic_apply  kind loc
   let len = List.length args in 
   let arity, fn, args  = 
   match args with 
-  | [ {pexp_desc = Pexp_construct ({txt = Lident "()"}, None)}]
+  | [ {pexp_desc =
+         Pexp_construct ({txt = Lident "()"}, None)}]
     -> 
      0, cb loc obj, []
   | _ -> 
     len,  cb loc obj, args in
+  if arity < 10 then 
+    let txt = 
+      match kind with 
+      | `Fn | `PropertyFn ->  
+        Longident.Ldot (Ast_literal.Lid.js_unsafe, 
+                        Literals.js_fn_run ^ string_of_int arity)
+      | `Method -> 
+        Longident.Ldot(Ast_literal.Lid.js_unsafe,
+                       Literals.js_method_run ^ string_of_int arity
+                      ) in 
+    Parsetree.Pexp_apply (Exp.ident {txt ; loc}, ("",fn) :: List.map (fun x -> "",x) args)
+  else 
   let fn_type, args_type, result_type = Ast_comb.tuple_type_pair ~loc `Run arity  in 
   let string_arity = string_of_int arity in
   let pval_prim, pval_type = 
@@ -157,7 +146,7 @@ let generic_apply  kind loc
       [Literals.js_method_run ; string_arity], 
       arrow ~loc "" (lift_method_type loc args_type result_type) fn_type
   in
-  Ast_comb.create_local_external loc ~pval_prim ~pval_type 
+  Ast_external.create_local_external loc ~pval_prim ~pval_type 
     (("", fn) :: List.map (fun x -> "",x) args )
 
 
@@ -172,9 +161,12 @@ let method_apply loc self obj name args =
   generic_apply `Method loc self obj args 
     (fun loc obj -> Exp.mk ~loc (js_property loc obj name))
 
-let generic_to_uncurry_type kind loc (mapper : Ast_mapper.mapper)
+let generic_to_uncurry_type  kind loc (mapper : Ast_mapper.mapper) label
     (first_arg : Parsetree.core_type) 
-    (typ : Parsetree.core_type)  = 
+    (typ : Parsetree.core_type)  =
+  if label <> "" then
+    Location.raise_errorf ~loc "label is not allowed";                 
+
   let rec aux acc (typ : Parsetree.core_type) = 
     (* in general, 
        we should collect [typ] in [int -> typ] before transformation, 
@@ -196,21 +188,19 @@ let generic_to_uncurry_type kind loc (mapper : Ast_mapper.mapper)
   let first_arg = mapper.typ mapper first_arg in
   let result, rev_extra_args = aux  [first_arg] typ in 
   let args  = List.rev rev_extra_args in 
+  let filter_args args  =  
+    match args with 
+    | [{Parsetree.ptyp_desc = 
+          (Ptyp_constr ({txt = Lident "unit"}, []) 
+          )}]
+      -> []
+    | _ -> args in
   match kind with 
-  | `Fn
-    ->
-    let args = 
-      match args with 
-      | [{ptyp_desc = Ptyp_constr ({txt = Lident "unit"}, [])}]
-        -> []
-      | _ -> args in
+  | `Fn ->
+    let args = filter_args args in
     lift_curry_type loc args result 
   | `Method -> 
-    let args = 
-      match args with 
-      | [{ptyp_desc = Ptyp_constr ({txt = Lident "unit"}, [])}]
-        -> []
-      | _ -> args in
+    let args = filter_args args in
     lift_method_type loc args result 
 
   | `Method_callback
@@ -247,17 +237,29 @@ let generic_to_uncurry_exp kind loc (self : Ast_mapper.mapper)  pat body
   let len = List.length rev_extra_args in 
   let arity = 
     match kind with 
-    | `Fn  ->     
+    | `Fn  ->
       begin match rev_extra_args with 
-        | [ {ppat_desc = Ppat_construct ({txt = Lident "()"}, None)}]
-          -> 0 
+        | [ p]
+          ->
+          Ast_pat.is_unit_cont ~yes:0 ~no:len p           
+
         | _ -> len 
       end
     | `Method_callback -> len  in 
-  let pval_prim =
+  if arity < 10  then 
+    let txt = 
+      match kind with 
+      | `Fn -> 
+        Longident.Ldot ( Ast_literal.Lid.js_unsafe, Literals.js_fn_mk ^ string_of_int arity)
+      | `Method_callback -> 
+        Longident.Ldot (Ast_literal.Lid.js_unsafe,  Literals.js_fn_method ^ string_of_int arity) in
+    Parsetree.Pexp_apply (Exp.ident {txt;loc} , ["",body])
+
+  else 
+    let pval_prim =
       [ (match kind with 
-           | `Fn -> Literals.js_fn_mk
-           | `Method_callback -> Literals.js_fn_method); 
+            | `Fn -> Literals.js_fn_mk
+            | `Method_callback -> Literals.js_fn_method); 
         string_of_int arity]  in
     let fn_type , args_type, result_type  = Ast_comb.tuple_type_pair ~loc `Make arity  in 
     let pval_type = arrow ~loc "" fn_type (
@@ -267,68 +269,41 @@ let generic_to_uncurry_exp kind loc (self : Ast_mapper.mapper)  pat body
         | `Method_callback -> 
           lift_js_method_callback loc args_type result_type
       ) in
-    Ast_comb.create_local_external loc ~pval_prim ~pval_type [("", body)]
+    Ast_external.local_extern_cont loc ~pval_prim ~pval_type 
+      (fun prim -> Exp.apply ~loc prim ["", body]) 
 
 let to_uncurry_fn   = 
   generic_to_uncurry_exp `Fn
 let to_method_callback  = 
   generic_to_uncurry_exp `Method_callback 
 
-let from_labels ~loc (labels : Asttypes.label list) : Parsetree.core_type = 
-  let arity = List.length labels in 
-  let tyvars = (Ext_list.init arity (fun i ->      
-      Typ.var ~loc ("a" ^ string_of_int i))) in 
-  let result_type =
-    to_js_type loc  
-     (Typ.object_ ~loc (List.map2 (fun x y -> x ,[], y) labels tyvars) Closed)
-  in 
-  List.fold_right2 
-    (fun label tyvar acc -> arrow ~loc label tyvar acc) labels tyvars  result_type
 
 let handle_debugger loc payload = 
   if Ast_payload.as_empty_structure payload then
-    let predef_unit_type = Ast_literal.type_unit ~loc () in
-    let pval_prim = ["js_debugger"] in
-    Ast_comb.create_local_external loc 
-      ~pval_prim
-      ~pval_type:(arrow "" predef_unit_type predef_unit_type)
-      [("",  Ast_literal.val_unit ~loc ())]
+    Parsetree.Pexp_apply
+      (Exp.ident {txt = Ldot(Ast_literal.Lid.js_unsafe, Literals.js_debugger ); loc}, 
+       ["", Ast_literal.val_unit ~loc ()])
   else Location.raise_errorf ~loc "bs.raw can only be applied to a string"
 
 
 let handle_raw loc payload = 
   begin match Ast_payload.as_string_exp payload with 
-    | None -> 
-      Location.raise_errorf ~loc "bs.raw can only be applied to a string"
+    | None ->
+      Location.raise_errorf ~loc
+        "bs.raw can only be applied to a string "
+
     | Some exp -> 
-      let pval_prim = ["js_pure_expr"] in
-      { exp with pexp_desc = Ast_comb.create_local_external loc 
-                     ~pval_prim
-                     ~pval_type:(arrow "" 
-                                   (Ast_literal.type_string ~loc ()) 
-                                   (Ast_literal.type_any ~loc ()) )
-
-                     ["",exp]}
+      let pexp_desc = 
+        Parsetree.Pexp_apply (
+            Exp.ident {loc; 
+                       txt = 
+                         Ldot (Ast_literal.Lid.js_unsafe, 
+                               Literals.js_pure_expr)},
+            ["",exp]
+          )
+      in
+      { exp with pexp_desc }
   end
-
-let handle_regexp loc payload = 
-  match Ast_payload.as_string_exp payload with 
-  | None -> 
-    Location.raise_errorf ~loc "bs.raw can only be applied to a string"
-  | Some exp -> 
-    let pval_prim = ["js_pure_expr"] in
-    {exp with pexp_desc = 
-                Ast_comb.local_extern_cont loc 
-                  ~pval_prim
-                  ~pval_type:(arrow "" 
-                                (Ast_literal.type_string ~loc ()) 
-                                (Ast_literal.type_any ~loc ()) )
-                  (fun f -> 
-                     Exp.constraint_ ~loc 
-                       (Exp.apply ~loc f ["", exp])
-                       (Typ.constr ~loc {txt = re_id (); loc} [])
-                  )
-    }
 
 
 
@@ -337,19 +312,269 @@ let handle_raw_structure loc payload =
   begin match Ast_payload.as_string_exp payload with 
     | Some exp 
       -> 
-      let pval_prim = ["js_pure_stmt"] in 
+      let pexp_desc = 
+        Parsetree.Pexp_apply(
+            Exp.ident {txt = Ldot (Ast_literal.Lid.js_unsafe,  Literals.js_pure_stmt); loc},
+            ["",exp]) in 
       Ast_helper.Str.eval 
-        { exp with pexp_desc =
-                     Ast_comb.create_local_external loc 
-                       ~pval_prim
-                       ~pval_type:(arrow ""
-                                     (Ast_literal.type_string ~loc ())
-                                     (Ast_literal.type_any ~loc ()))
-                       ["",exp]}
+        { exp with pexp_desc }
+
     | None
       -> 
       Location.raise_errorf ~loc "bs.raw can only be applied to a string"
   end
+
+    
+let ocaml_obj_as_js_object
+    loc (mapper : Ast_mapper.mapper)
+    (self_pat : Parsetree.pattern)
+    (clfs : Parsetree.class_field list) =
+  let self_type_lit = "self_type"   in 
+
+  (** Attention: we should avoid type variable conflict for each method  
+      Since the method name is unique, there would be no conflict 
+      OCaml does not allow duplicate instance variable and duplicate methods, 
+      but it does allow duplicates between instance variable and method name, 
+      we should enforce such rules 
+      {[
+        object 
+          val x = 3
+          method x = 3 
+        end [@bs]
+      ]} should not compile with a meaningful error message
+  *)
+
+  let generate_val_method_pair 
+      loc (mapper : Ast_mapper.mapper)
+      val_name  is_mutable = 
+
+    let result = Typ.var ~loc val_name in 
+    result , 
+    ((val_name , [], result ) ::
+     (if is_mutable then 
+        [val_name ^ Literals.setter_suffix,[],
+         to_method_type loc mapper "" result (Ast_literal.type_unit ~loc ()) ]
+      else 
+        []) )
+  in 
+  (* Note mapper is only for API compatible 
+   * TODO: we should check label name to avoid conflict 
+  *)  
+  let self_type loc = Typ.var ~loc self_type_lit in 
+
+  let generate_arg_type loc (mapper  : Ast_mapper.mapper)
+      method_name arity : Ast_core_type.t = 
+    let result = Typ.var ~loc method_name in   
+    if arity = 0 then
+      to_method_type loc mapper "" (Ast_literal.type_unit ~loc ()) result 
+
+    else
+      let tyvars =
+        Ext_list.init arity (fun i -> Typ.var ~loc (method_name ^ string_of_int i))
+      in
+      begin match tyvars with
+        | x :: rest ->
+          let method_rest =
+            List.fold_right (fun v acc -> Typ.arrow ~loc "" v acc)
+              rest result in         
+          to_method_type loc mapper "" x method_rest
+        | _ -> assert false
+      end in          
+
+  let generate_method_type
+      loc
+      (mapper : Ast_mapper.mapper)
+      ?alias_type method_name arity =
+    let result = Typ.var ~loc method_name in   
+
+    let self_type =
+      let v = self_type loc  in
+      match alias_type with 
+      | None -> v 
+      | Some ty -> Typ.alias ~loc ty self_type_lit
+    in  
+    if arity = 0 then
+      to_method_callback_type loc mapper  "" self_type result      
+    else
+      let tyvars =
+        Ext_list.init arity (fun i -> Typ.var ~loc (method_name ^ string_of_int i))
+      in
+      begin match tyvars with
+        | x :: rest ->
+          let method_rest =
+            List.fold_right (fun v acc -> Typ.arrow ~loc "" v acc)
+              rest result in         
+          (to_method_callback_type loc mapper  "" self_type
+             (Typ.arrow ~loc "" x method_rest))
+        | _ -> assert false
+      end in          
+
+
+  (** we need calculate the real object type 
+      and exposed object type, in some cases there are equivalent
+
+      for public object type its [@bs.meth] it does not depend on itself
+      while for label argument it is [@bs.this] which depends internal object
+  *)
+  let internal_label_attr_types, public_label_attr_types  = 
+    List.fold_right
+      (fun ({pcf_loc  = loc} as x  : Parsetree.class_field) 
+        (label_attr_types, public_label_attr_types) ->
+        match x.pcf_desc with
+        | Pcf_method (
+            label,
+            public_flag,
+            Cfk_concrete
+              (Fresh, e))
+           ->
+           begin match e.pexp_desc with
+             | Pexp_poly
+                 (({pexp_desc = Pexp_fun ("", None, pat, e)} ),
+                  None) ->  
+               let arity = Ast_pat.arity_of_fun pat e in
+               let method_type =
+                 generate_arg_type x.pcf_loc mapper label.txt arity in 
+               ((label.Asttypes.txt, [], method_type) :: label_attr_types),
+               (if public_flag = Public then
+                  (label.Asttypes.txt, [], method_type) :: public_label_attr_types
+                else 
+                  public_label_attr_types)
+               
+             | Pexp_poly( _, Some _)
+               ->
+               Location.raise_errorf ~loc "polymorphic type annotation not supported yet"
+             | Pexp_poly (_, None) ->
+               Location.raise_errorf ~loc
+                 "Unsupported syntax, expect syntax like `method x () = x ` "
+             | _ ->
+               Location.raise_errorf ~loc "Unsupported syntax in js object"               
+           end
+         | Pcf_val (label, mutable_flag, Cfk_concrete(Fresh, val_exp)) ->
+           let  label_type, label_attr  = 
+             generate_val_method_pair x.pcf_loc mapper label.txt  
+               (mutable_flag = Mutable )
+           in
+           (label_attr @ label_attr_types, public_label_attr_types)
+         | Pcf_val (label, mutable_flag, Cfk_concrete(Override, val_exp)) -> 
+           Location.raise_errorf ~loc "override flag not support currently"
+         | Pcf_val (label, mutable_flag, Cfk_virtual _) -> 
+           Location.raise_errorf ~loc "virtual flag not support currently"
+
+         | Pcf_method (_, _, Cfk_concrete(Override, _) ) -> 
+           Location.raise_errorf ~loc "override flag not supported"
+       
+         | Pcf_method (_, _, Cfk_virtual _ )
+           ->
+           Location.raise_errorf ~loc "virtural method not supported"
+           
+         | Pcf_inherit _ 
+         | Pcf_initializer _
+         | Pcf_attribute _
+         | Pcf_extension _
+         | Pcf_constraint _ ->
+           Location.raise_errorf ~loc "Only method support currently"
+      ) clfs ([], []) in
+  let internal_obj_type = Ast_core_type.make_obj ~loc internal_label_attr_types in
+  let public_obj_type = Ast_core_type.make_obj ~loc public_label_attr_types in
+  let (labels,  label_types, exprs, _) =
+    List.fold_right
+      (fun (x  : Parsetree.class_field)
+        (labels,
+         label_types,
+         exprs, aliased ) ->
+        match x.pcf_desc with
+        | Pcf_method (
+            label,
+            _public_flag,
+            Cfk_concrete
+              (Fresh, e))
+           ->
+           begin match e.pexp_desc with
+             | Pexp_poly
+                 (({pexp_desc = Pexp_fun ("", None, pat, e)} as f),
+                  None) ->  
+               let arity = Ast_pat.arity_of_fun pat e in
+               let alias_type = 
+                 if aliased then None 
+                 else Some internal_obj_type in
+               let  label_type =
+                 generate_method_type ?alias_type
+                   x.pcf_loc mapper label.txt arity in 
+               (label::labels,
+                label_type::label_types,
+                {f with
+                 pexp_desc =
+                   let f = Ast_pat.is_unit_cont pat ~yes:e ~no:f in                       
+                   to_method_callback loc mapper self_pat f
+                } :: exprs, 
+                true
+               )
+             | Pexp_poly( _, Some _)
+               ->
+               Location.raise_errorf ~loc
+                 "polymorphic type annotation not supported yet"
+               
+             | Pexp_poly (_, None) ->
+               Location.raise_errorf
+                 ~loc "Unsupported syntax, expect syntax like `method x () = x ` "
+             | _ ->
+               Location.raise_errorf ~loc "Unsupported syntax in js object"               
+           end
+         | Pcf_val (label, mutable_flag, Cfk_concrete(Fresh, val_exp)) ->
+           let  label_type, label_attr  = 
+             generate_val_method_pair x.pcf_loc mapper label.txt  
+               (mutable_flag = Mutable )
+           in
+           (label::labels,
+            label_type :: label_types, 
+            (mapper.expr mapper val_exp :: exprs), 
+            aliased 
+           )
+
+         | Pcf_val (label, mutable_flag, Cfk_concrete(Override, val_exp)) -> 
+           Location.raise_errorf ~loc "override flag not support currently"
+         | Pcf_val (label, mutable_flag, Cfk_virtual _) -> 
+           Location.raise_errorf ~loc "virtual flag not support currently"
+
+         | Pcf_method (_, _, Cfk_concrete(Override, _) ) -> 
+           Location.raise_errorf ~loc "override flag not supported"
+       
+         | Pcf_method (_, _, Cfk_virtual _ )
+           ->
+           Location.raise_errorf ~loc "virtural method not supported"
+           
+
+         | Pcf_inherit _ 
+         | Pcf_initializer _
+         | Pcf_attribute _
+         | Pcf_extension _
+         | Pcf_constraint _ ->
+           Location.raise_errorf ~loc "Only method support currently"
+      ) clfs  ([], [], [], false) in
+  let pval_type =
+    List.fold_right2
+      (fun label label_type acc ->
+         Typ.arrow
+           ~loc:label.Asttypes.loc
+           label.Asttypes.txt
+           label_type acc           
+      ) labels label_types public_obj_type in
+  let pval_attributes = Ast_attributes.bs_obj pval_type in
+  let local_fun_name = "mk" in
+  let pval_type, pval_prim =
+    Ast_external_attributes.handle_attributes_as_string
+      loc
+      local_fun_name      
+      pval_type pval_attributes "" in
+  Ast_external.local_extern_cont
+    loc
+    ~pval_attributes
+    ~pval_prim
+    ~local_fun_name
+    (fun e ->
+       Exp.apply ~loc e
+         (List.map2 (fun l expr -> l.Asttypes.txt, expr) labels exprs) )
+    ~pval_type
 
 let record_as_js_object 
     loc 
@@ -359,14 +584,26 @@ let record_as_js_object
   let labels, args = 
     Ext_list.split_map (fun ({Location.txt ; loc}, e) -> 
         match txt with
-        | Longident.Lident x -> (x, (x, self.expr self e))
+        | Longident.Lident x ->
+          (x, (x, self.expr self e))
         | Ldot _ | Lapply _ ->  
           Location.raise_errorf ~loc "invalid js label "
   ) label_exprs in 
-  let pval_prim = [ "" ] in 
-  let pval_attributes = [Ast_attributes.bs_obj] in 
-  let pval_type = from_labels ~loc labels in 
-  Ast_comb.create_local_external loc 
+  let arity = List.length labels in 
+  let tyvars = (Ext_list.init arity (fun i ->      
+      Typ.var ~loc ("a" ^ string_of_int i))) in 
+  
+  let pval_type = Ast_core_type.from_labels ~loc tyvars labels in 
+  let pval_attributes = Ast_attributes.bs_obj pval_type in 
+  let local_fun_name = "mk" in
+  let pval_type, pval_prim = 
+    Ast_external_attributes.handle_attributes_as_string
+      loc 
+      local_fun_name
+      pval_type pval_attributes "" in 
+  Ast_external.create_local_external loc 
     ~pval_prim
-    ~pval_type ~pval_attributes 
+    ~pval_type 
+    ~pval_attributes 
+    ~local_fun_name
     args 

@@ -314,6 +314,16 @@ let index ?comment (e0 : t)  e1 : t =
     List.nth l  (Int32.to_int e1)  (* Float i -- should not appear here *)
   | _ -> { expression_desc = Access (e0, int ?comment e1); comment = None} 
 
+
+let index_addr ?comment ~yes ~no (e0 : t)  e1 : t = 
+  match e0.expression_desc with
+  | Array (l,_mutable_flag)  when no_side_effect e0 -> 
+    no
+  | Caml_block (l,_mutable_flag, _, _)  when no_side_effect e0 -> 
+    no
+  | _ ->
+    yes ({ expression_desc = Access (e0, int ?comment e1); comment = None} : t) 
+
 let call ?comment ~info e0 args : t = 
   {expression_desc = Call(e0,args,info); comment }
 
@@ -1190,13 +1200,19 @@ let rec int32_band ?comment (e1 : J.expression) (e2 : J.expression) : J.expressi
 (* TODO -- alpha conversion 
     remember to add parens..
 *)
-let of_block ?comment block e : t = 
+let of_block ?comment ?e block : t = 
   call ~info:Js_call_info.ml_full_call
     {
       comment ;
       expression_desc = 
-        Fun (false, [], (block @ [{J.statement_desc = Return {return_value = e } ;
-                            comment}]) , Js_fun_env.empty 0)
+        Fun (false, [], 
+             begin match e with 
+               | None -> block 
+               | Some e -> 
+                 block @ [{J.statement_desc = Return {return_value = e } ;
+                           comment}]
+             end
+            , Js_fun_env.empty 0)
     } []
 
 let is_nil ?comment x = triple_equal ?comment x nil 

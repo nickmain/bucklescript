@@ -1,6 +1,6 @@
 
 
-external f : int -> int = "xx" [@@bs.call ]
+external f : int -> int = "xx" [@@bs.val ]
 
 
 let u () = f 3 
@@ -17,6 +17,12 @@ module Textarea = struct
   external draw : t -> string  -> unit = "string" [@@bs.send ]
 
 end
+
+(*
+external never_used : Textarea.t ->  int -> int  = "minHeight" [@@bs.get]
+
+let v = never_used (Textarea.create ()) 3 
+*)
 module Int32Array = struct
   type t 
   external create : int -> t = "Int32Array" [@@bs.new]

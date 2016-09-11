@@ -1790,15 +1790,6 @@ function string_of_repeated_type(param) {
   }
 }
 
-function string_of_associative_type(param) {
-  if (param !== 0) {
-    return "Hashtbl.t";
-  }
-  else {
-    return "list";
-  }
-}
-
 function string_of_record_field_type(param) {
   switch (param.tag | 0) {
     case 0 : 
@@ -1832,7 +1823,7 @@ function string_of_record_field_type(param) {
                                 ])
                             ]),
                           "(%s, %s) %s"
-                        ]), string_of_basic_type(match$1[2][0]), string_of_field_type(match$1[3][0]), string_of_associative_type(/* At_hashtable */1));
+                        ]), string_of_basic_type(match$1[2][0]), string_of_field_type(match$1[3][0]), "Hashtbl.t");
         }
         else {
           return Curry._3(Printf.sprintf(/* Format */[
@@ -1856,7 +1847,7 @@ function string_of_record_field_type(param) {
                                 ])
                             ]),
                           "(%s * %s) %s"
-                        ]), string_of_basic_type(match$1[2][0]), string_of_field_type(match$1[3][0]), string_of_associative_type(/* At_list */0));
+                        ]), string_of_basic_type(match$1[2][0]), string_of_field_type(match$1[3][0]), "list");
         }
     case 4 : 
         return param[0][/* v_name */0];
@@ -4129,7 +4120,7 @@ function unresolved_of_string(s) {
     return /* record */[
             /* scope */List.rev(match[1]),
             /* type_name */match[0],
-            /* from_root */+(s[0] === ".")
+            /* from_root */+(Caml_string.get(s, 0) === /* "." */46)
           ];
   }
   else {

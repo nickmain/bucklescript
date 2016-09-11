@@ -115,13 +115,6 @@ val set_no_any_assert : unit -> unit
 val get_no_any_assert : unit -> bool 
 
 
-
-
-(** Internal use *)
-val runtime_set : String_set.t
-val stdlib_set : String_set.t
-(** only used in {!Js_generate_require} *)
-
 val block : string
 val int32 : string
 val gc : string 
@@ -137,7 +130,8 @@ val parser : string
 val obj_runtime : string
 val array : string
 val format : string
-val string : string 
+val string : string
+val bytes : string  
 val float : string 
 val curry : string 
 (* val bigarray : string *)
@@ -162,3 +156,4 @@ val is_same_file : unit -> bool
 
 val tool_name : string
 
+val is_windows : bool 

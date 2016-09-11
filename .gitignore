@@ -1,5 +1,6 @@
 *~
 _build
+*.out
 *.compile
 *.native
 *.byte
@@ -32,13 +33,14 @@ _build
 *.zip
 *.gz
 # special file 
-ocaml_pack
+
 bsc
 bscc
-ocaml_pack0.ml
-ocaml_pack1.ml
+bsppx
+jscomp/tools/ocamlpack*
+
 .idea
-exports.js
+
 node_modules
 oxml
 test.json
@@ -52,9 +54,11 @@ ocaml/
 man/
 lib/ocaml
 bin/*
+ocaml_src
 
 # for npm publish
 !bin/bsc
+!bin/bsppx
 !bin/ocaml
 !bin/ocamldep
 !bin/ocamldep.opt
@@ -67,5 +71,5 @@ bin/*
 !bin/ocamlrun
 !bin/ocamlc
 !bin/ocamlc.opt
-
+!bin/bspack
 !ocaml.tar.gz
